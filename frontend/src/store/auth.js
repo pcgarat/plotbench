@@ -50,9 +50,12 @@ export async function register(username, password, email) {
 
 export async function logout() {
   try {
-    const { flushPreferencesPush, stopPreferencesSync } = await import("./userPreferencesSync.js");
+    const { flushPreferencesPush, stopPreferencesSync, clearLocalPreferencesCache } = await import(
+      "./userPreferencesSync.js"
+    );
     await flushPreferencesPush();
     stopPreferencesSync();
+    clearLocalPreferencesCache();
   } catch (_) {}
   try {
     await fetchJson(`${API}/auth/logout`, {

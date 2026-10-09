@@ -7,17 +7,96 @@ import {
   applyDocumentLayout,
   layoutStore,
   persistLayout,
+  SIDEBAR_TAB_STORAGE_KEY,
 } from "./layout.js";
-import { imagesStore, persistImagesPrefs } from "./images.js";
+import { imagesStore, persistImagesPrefs, IMAGES_PREFS_KEY } from "./images.js";
 import {
   historyStore,
   persistConversationSort,
   persistLeftHistoryMode,
   persistMessageSort,
+  LEFT_HISTORY_MODE_KEY,
+  LEFT_HISTORY_SORT_CONVERSATIONS_KEY,
+  LEFT_HISTORY_SORT_MESSAGES_KEY,
 } from "./history.js";
-import { debugStore, getStoredDebugLogSize, setStoredDebugLogSize } from "./debug.js";
-import { readLastConversationId, saveLastConversationId } from "./session.js";
+import { debugStore, getStoredDebugLogSize, setStoredDebugLogSize, DEBUG_LOG_SIZE_STORAGE_KEY } from "./debug.js";
+import {
+  readLastConversationId,
+  saveLastConversationId,
+  LAST_CONVERSATION_STORAGE_KEY,
+} from "./session.js";
+import {
+  settingsStore,
+  persistSettingsPrefs,
+  readStoredSettingsPrefs,
+  PERSISTED_SETTINGS_KEYS,
+  SETTINGS_PREFS_STORAGE_KEY,
+} from "./settings.js";
 import { loadUserPreferences, saveUserPreferences } from "./auth.js";
+
+/**
+ * Claves de la caché local de preferencias. Se limpian al cerrar sesión para que
+ * otro usuario en el mismo navegador no herede las opciones del anterior.
+ */
+const PREFERENCE_CACHE_KEYS = [
+  "darkMode",
+  "leftSidebarCollapsed",
+  "composerCollapsed",
+  "sidebarLeftWidthPx",
+  "sidebarRightWidthPx",
+  "centerChatVisible",
+  "centerGalleryVisible",
+  "centerQueueVisible",
+  "centerChatGalleryShare",
+  "uiBaseFontScale",
+  "chatbot_conversation_font_size_rem",
+  "sidebarLeftFontScale",
+  "sidebarRightFontScale",
+  "chatbot_conversation_image_size",
+  "chatbot_reading_mode_width_px",
+  "autoScrollDuringGeneration",
+  "renderMarkdown",
+  SIDEBAR_TAB_STORAGE_KEY,
+  "chatbot_sidebar_accordion",
+  SETTINGS_PREFS_STORAGE_KEY,
+  IMAGES_PREFS_KEY,
+  LEFT_HISTORY_MODE_KEY,
+  LEFT_HISTORY_SORT_CONVERSATIONS_KEY,
+  LEFT_HISTORY_SORT_MESSAGES_KEY,
+  DEBUG_LOG_SIZE_STORAGE_KEY,
+  LAST_CONVERSATION_STORAGE_KEY,
+];
+
+export function clearLocalPreferencesCache() {
+  try {
+    PREFERENCE_CACHE_KEYS.forEach((key) => localStorage.removeItem(key));
+  } catch (_) {}
+}
+
+/** Claves de settings que reflejan siempre el estado vivo (no dependen de params). */
+const LIVE_SETTINGS_KEYS = ["currentProvider", "currentModel", "historyTurns", "saveToChromadb"];
+
+/**
+ * Preferencias de ajustes a persistir. La caché local es la base para no perder
+ * los params guardados cuando el `paramsSource` cae temporalmente a "default"
+ * (p. ej. al abrir una conversación antigua sin params).
+ */
+export function collectSettingsPrefs() {
+  const stored = readStoredSettingsPrefs();
+  const out = {};
+  PERSISTED_SETTINGS_KEYS.forEach((key) => {
+    if (key in stored) out[key] = stored[key];
+  });
+  const settings = settingsStore.get();
+  LIVE_SETTINGS_KEYS.forEach((key) => {
+    if (settings[key] !== undefined) out[key] = settings[key];
+  });
+  if (settings.paramsSource === "user") {
+    out.paramsValues = settings.paramsValues;
+    out.paramsSource = "user";
+  }
+  return out;
+}
 
 const LAYOUT_KEYS = [
   "darkMode",
@@ -57,6 +136,7 @@ export function collectPreferencesSnapshot() {
   return {
     version: 1,
     layout: layoutOut,
+    settings: collectSettingsPrefs(),
     imagesPrefs: { ...(imagesStore.get().prefs || {}) },
     history: {
       mode: historyStore.get().mode,
@@ -82,6 +162,17 @@ export function applyPreferencesSnapshot(raw) {
         layoutStore.set(patch);
         persistLayout(patch);
         applyDocumentLayout(layoutStore.get());
+      }
+    }
+
+    if (raw.settings && typeof raw.settings === "object") {
+      const settingsPatch = {};
+      PERSISTED_SETTINGS_KEYS.forEach((key) => {
+        if (key in raw.settings) settingsPatch[key] = raw.settings[key];
+      });
+      if (Object.keys(settingsPatch).length) {
+        settingsStore.set(settingsPatch);
+        persistSettingsPrefs(settingsPatch);
       }
     }
 
@@ -130,7 +221,11 @@ export async function hydratePreferencesFromServer() {
   const hasServer =
     prefs &&
     typeof prefs === "object" &&
-    (prefs.layout || prefs.imagesPrefs || prefs.history || prefs.debugLogSize != null);
+    (prefs.layout ||
+      prefs.settings ||
+      prefs.imagesPrefs ||
+      prefs.history ||
+      prefs.debugLogSize != null);
 
   if (!hasServer) {
     const snapshot = collectPreferencesSnapshot();
@@ -162,11 +257,23 @@ function onStoreChange() {
   schedulePreferencesPush();
 }
 
+let lastSettingsPersisted = null;
+
+function onSettingsChange() {
+  const snapshot = collectSettingsPrefs();
+  const serialized = JSON.stringify(snapshot);
+  if (serialized === lastSettingsPersisted) return;
+  lastSettingsPersisted = serialized;
+  persistSettingsPrefs(snapshot);
+  schedulePreferencesPush();
+}
+
 export function startPreferencesSync() {
   if (watchStarted) return;
   watchStarted = true;
   unsubscribers = [
     layoutStore.subscribe(onStoreChange),
+    settingsStore.subscribe(onSettingsChange),
     imagesStore.subscribe(onStoreChange),
     historyStore.subscribe(onStoreChange),
   ];
