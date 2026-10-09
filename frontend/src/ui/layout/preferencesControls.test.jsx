@@ -1,7 +1,12 @@
 import { fireEvent, render } from "@testing-library/react";
 import { vi, beforeEach, describe, expect, it } from "vitest";
 import App from "../../App.jsx";
-import { layoutStore } from "../../store/layout.js";
+import {
+  layoutStore,
+  UI_BASE_FONT_SCALE_MIN,
+  UI_BASE_FONT_SCALE_STEP,
+  SIDEBAR_FONT_SCALE_MIN,
+} from "../../store/layout.js";
 import { debugStore, DEBUG_LOG_SIZE_DEFAULT } from "../../store/debug.js";
 
 vi.mock("../../app/boot.js", () => ({
@@ -55,14 +60,23 @@ describe("controles de Interfaz en Preferencias", () => {
     expect(document.documentElement.style.getPropertyValue("--ui-base-font-scale")).toBe("1.05");
   });
 
-  it("al bajar el tamaño de ilustraciones actualiza el porcentaje y la variable CSS", () => {
+  it("al bajar el tamaño de ilustraciones usa paso del 5%", () => {
     render(<App />);
     const label = document.getElementById("pref-image-value");
     expect(label.textContent).toBe("100%");
     fireEvent.click(document.getElementById("pref-image-decrease"));
-    expect(label.textContent).toBe("90%");
-    expect(document.documentElement.style.getPropertyValue("--chat-image-max-width")).toBe("90%");
-    expect(layoutStore.get().imageSizeFactor).toBeCloseTo(0.9);
+    expect(label.textContent).toBe("95%");
+    expect(document.documentElement.style.getPropertyValue("--chat-image-max-width")).toBe("95%");
+    expect(layoutStore.get().imageSizeFactor).toBeCloseTo(0.95);
+  });
+
+  it("los zooms de interfaz comparten mínimo 5% y paso 5%", () => {
+    expect(UI_BASE_FONT_SCALE_MIN).toBe(0.05);
+    expect(UI_BASE_FONT_SCALE_STEP).toBe(0.05);
+    expect(SIDEBAR_FONT_SCALE_MIN).toBe(0.05);
+    for (const field of ["imageSizeFactor", "conversationFontRem", "sidebarLeftFontScale", "sidebarRightFontScale"]) {
+      expect(layoutStore.get()[field]).toBeGreaterThanOrEqual(0.05);
+    }
   });
 
   it("al subir el historial de debug actualiza el valor del panel", () => {

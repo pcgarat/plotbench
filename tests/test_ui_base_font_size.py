@@ -57,13 +57,16 @@ def test_js_defines_base_font_scale_as_independent_multiplier():
     assert "pref-font-base-decrease" in js
     assert "pref-font-base-increase" in js
     assert "pref-font-base-value" in js
-    assert "UI_BASE_FONT_SCALE_MIN = 0.8" in js
+    assert "UI_BASE_FONT_SCALE_MIN = 0.05" in js
     assert "UI_BASE_FONT_SCALE_MAX = 5" in js
     assert "UI_BASE_FONT_SCALE_STEP = 0.05" in js
     assert "UI_BASE_FONT_SCALE_DEFAULT = 1" in js
     assert "SIDEBAR_FONT_SCALE_MAX = 5" in js
+    assert "SIDEBAR_FONT_SCALE_MIN = 0.05" in js
     assert "FONT_SIZE_MAX = 5" in js
     assert "IMAGE_SIZE_MAX = 1" in js
+    assert "IMAGE_SIZE_MIN = 0.05" in js
+    assert "IMAGE_SIZE_STEP = 0.05" in js
 
 
 def test_css_html_font_size_uses_base_scale_variable():
