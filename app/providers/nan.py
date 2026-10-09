@@ -18,42 +18,73 @@ import httpx
 
 from app.config import settings
 from app.providers.base import LLMProvider, ProviderModelInfo, StreamChunk
+from app.services.model_contract.facts import ModelFacts
 
 # URL base sin sufijo /v1 (el provider añade /v1/... como OpenAI/Abliteration)
 NAN_BASE_URL = "https://api.nan.builders"
 
-# Catálogo conocido (nan.builders/docs/models): se usa solo para enriquecer los modelos
-# que devuelve GET /v1/models con contexto y nombre legible. NO se añaden modelos que la
-# API no liste: /v1/models es la fuente de verdad de lo que la key puede llamar y el
-# catálogo puede incluir modelos no accesibles (p. ej. glm5.3 requiere tier premium).
+# Modelos no conversacionales que /v1/models también devuelve. Se ocultan del
+# selector de chat: se sirven por otros endpoints (embeddings, audio, imagen) y
+# no aceptan /v1/chat/completions. `minimax-h3` no se incluye aquí: no está
+# documentado y con una key sin tier responde 401, como glm5.3.
+NAN_NON_CHAT_MODELS: frozenset[str] = frozenset(
+    {
+        "qwen3-embedding",
+        "rerank",
+        "whisper",
+        "kokoro",
+        "flux-2-klein",
+        "qwen-image-2.1",
+    }
+)
+
+# Catálogo conocido (nan.builders/docs/models): enriquece los modelos que devuelve
+# GET /v1/models con nombre legible y capacidades. NO se añaden modelos que la API no
+# liste: /v1/models es la fuente de verdad de lo que la key puede llamar y el catálogo
+# puede incluir modelos no accesibles (p. ej. glm5.3 requiere tier premium). El contexto
+# máximo vive en el preset `config/nan.json` (como OpenAI/Abliteration), no aquí.
 NAN_KNOWN_MODELS: dict[str, dict[str, Any]] = {
     "glm5.3": {
-        "context_length": 1_048_576,
         "display_name": "GLM 5.3 (multimodal, 1M, premium)",
+        "vision": True,
+        "tools": True,
+        "thinking_flag": True,
     },
     "deepseek-v4-flash": {
-        "context_length": 1_048_576,
         "display_name": "DeepSeek V4 Flash (vision, 1M)",
+        "vision": True,
+        "tools": True,
+        "thinking_flag": True,
     },
     "glm5.3-flash": {
-        "context_length": 1_048_576,
         "display_name": "GLM 5.3 Flash (multimodal, 1M)",
+        "vision": True,
+        "tools": True,
+        "thinking_flag": True,
     },
     "qwen3.8-flash": {
-        "context_length": 1_048_576,
         "display_name": "Qwen 3.8 Flash (vision, 1M)",
+        "vision": True,
+        "tools": True,
+        "thinking_flag": True,
     },
     "mimo-v2.6-flash": {
-        "context_length": 1_048_576,
         "display_name": "MiMo v2.6 Flash (omnimodal, 1M)",
+        "vision": True,
+        "tools": True,
+        "thinking_flag": True,
     },
     "gemma4": {
-        "context_length": 262_144,
         "display_name": "Gemma 4 (vision, 262K)",
+        "vision": True,
+        "tools": True,
+        "thinking_flag": True,
     },
     "qwen3.6": {
-        "context_length": 262_144,
         "display_name": "Qwen 3.6 (vision, 262K)",
+        "vision": True,
+        "tools": True,
+        "thinking_flag": True,
     },
 }
 
@@ -110,10 +141,12 @@ class NanProvider:
 
     def list_models(self) -> list[ProviderModelInfo]:
         """
-        Lista los modelos disponibles vía GET /v1/models.
+        Lista los modelos de chat disponibles vía GET /v1/models.
 
-        NaN no devuelve context_length en el listado; se enriquece con el catálogo
-        conocido (NAN_KNOWN_MODELS). No se añaden modelos que la API no liste.
+        Filtra los modelos no conversacionales (embeddings, audio, imagen): se
+        sirven por otros endpoints y no aceptan /v1/chat/completions. NaN no
+        devuelve context_length aquí; el contexto máximo vive en el preset
+        `config/nan.json`. No se añaden modelos que la API no liste.
 
         Raises:
             ConnectionError: Si no se puede conectar a NaN.
@@ -132,7 +165,7 @@ class NanProvider:
                 if not isinstance(m, dict):
                     continue
                 model_id = m.get("id", "")
-                if not model_id or model_id in seen:
+                if not model_id or model_id in seen or model_id in NAN_NON_CHAT_MODELS:
                     continue
                 seen.add(model_id)
                 known = NAN_KNOWN_MODELS.get(model_id, {})
@@ -141,7 +174,7 @@ class NanProvider:
                         name=model_id,
                         provider=self.provider_name,
                         display_name=known.get("display_name"),
-                        context_length=m.get("context_length") or known.get("context_length"),
+                        context_length=m.get("context_length"),
                         pricing=None,
                     )
                 )
@@ -281,8 +314,9 @@ class NanProvider:
     def show_model(self, model_name: str) -> dict[str, Any] | None:
         """
         Capacidad opcional: detalles del modelo vía GET /v1/models/{id}.
-        NaN no documenta ese endpoint; si no responde 200 se devuelve None y el
-        contexto/precios se resuelven por preset (config/nan.json) o catálogo.
+        NaN no documenta ese endpoint (responde 404); el contexto/precios se
+        resuelven por preset (`config/nan.json`) o catálogo. Se mantiene como
+        best-effort por si la API lo habilita en el futuro.
         """
         from datetime import datetime, timezone
 
@@ -305,7 +339,7 @@ class NanProvider:
             return None
 
         fetched_at = datetime.now(tz=timezone.utc).isoformat()
-        context_length = data.get("context_length") or known.get("context_length")
+        context_length = data.get("context_length")
         out: dict[str, Any] = {
             "fetched_at": fetched_at,
             "id": data.get("id") or model_name,
@@ -316,6 +350,26 @@ class NanProvider:
         if known.get("display_name"):
             out["display_name"] = known["display_name"]
         return {k: v for k, v in out.items() if v is not None and v != {}}
+
+    def model_facts(self, model_name: str):
+        """Hechos fiables del modelo (puerto ModelFacts).
+
+        Capacidades desde el catálogo curado; el contexto máximo, desde el preset
+        `config/nan.json` (fuente única de contexto, como OpenAI/Abliteration).
+        """
+        from app.provider_params import get_context_length_max
+        from app.services.model_contract.facts import facts_from_catalog
+
+        facts = facts_from_catalog(NAN_KNOWN_MODELS.get(model_name))
+        context = get_context_length_max(self.provider_name, model_name)
+        if context is None:
+            return facts
+        return ModelFacts(
+            vision=facts.vision,
+            tools=facts.tools,
+            thinking_flag=facts.thinking_flag,
+            context_length=context,
+        )
 
     def validate_connection(self) -> bool:
         try:

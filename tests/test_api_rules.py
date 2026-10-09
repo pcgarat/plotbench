@@ -4,6 +4,7 @@ from app.crud import delete_rule
 from app.crud import get_rule
 from app.crud import list_rules
 from app.crud import update_rule
+from app.services.rules.seed import NO_MORALIZE_RULE_ID
 
 
 def test_create_rule(db_session):
@@ -15,10 +16,11 @@ def test_create_rule(db_session):
 
 
 def test_list_rules_empty(client):
-    """GET /api/rules sin reglas devuelve lista vacía."""
+    """Sin reglas de usuario, GET /api/rules solo trae las builtin de scope chat."""
     r = client.get("/api/rules")
     assert r.status_code == 200
-    assert r.json() == []
+    data = r.json()
+    assert [item["id"] for item in data] == [NO_MORALIZE_RULE_ID]
 
 
 def test_list_rules_after_create(client, db_session):

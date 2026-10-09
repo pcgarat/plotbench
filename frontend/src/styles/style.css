@@ -9367,7 +9367,7 @@ select:focus-visible {
   border-radius: 6px !important;
   background: #0078d4 !important;
   color: #ffffff !important;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600 !important;
   padding: 0 12px;
   box-shadow: 0 1px 2px rgba(0, 86, 163, 0.35) !important;
@@ -9396,7 +9396,7 @@ select:focus-visible {
   border-radius: 6px !important;
   background: transparent !important;
   color: #0b5fa5 !important;
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   font-weight: 600 !important;
   padding: 0 12px;
   box-shadow: none !important;

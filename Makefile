@@ -56,9 +56,10 @@ help:
 	@echo "  make clean-chroma   Limpia datos de Chroma: elige conversaciones y qué borrar (historial, ingesta o todo)"
 	@echo "  make venv312   Crear .venv312 con Python 3.12 para ingest/clean-chroma (hazlo si falla por Python 3.14)"
 	@echo ""
-	@echo "  Overlays (Ollama stub + propuesta DRAFT; dry-run por defecto):"
+	@echo "  Overlays (stub + propuesta DRAFT; dry-run por defecto):"
 	@echo "  make overlay MODEL=<id>       Dry-run stub + ruta de propuesta (no escribe)"
-	@echo "  make overlay MODEL=<id> WRITE=1  Persiste stub en ollama.json + markdown DRAFT"
+	@echo "  make overlay MODEL=<id> WRITE=1  Persiste stub + markdown DRAFT"
+	@echo "  make overlay PROVIDER=nan MODEL=<id>  Igual para NaN (stub desde catálogo)"
 	@echo "  make overlay-batch            Dry-run batch de modelos listados sin overlay"
 	@echo "  make overlay-batch WRITE=1    Batch missing con escritura"
 	@echo ""
@@ -237,15 +238,16 @@ ingest: $(VENV)/bin/uvicorn
 clean-chroma: $(VENV)/bin/uvicorn
 	@$(PYTHON_INGEST) scripts/clean_chroma_conversations.py
 
-# Generador de overlays Ollama (dry-run por defecto; WRITE=1 para persistir)
+# Generador de overlays por proveedor (dry-run por defecto; WRITE=1 para persistir)
 MODEL ?=
 WRITE ?=
+PROVIDER ?= ollama
 overlay: $(VENV)/bin/pytest
-	@if [ -z "$(MODEL)" ]; then echo "Uso: make overlay MODEL=<id> [WRITE=1]"; exit 1; fi
-	@$(PYTHON) -m app.tools.overlay_generator --provider ollama --model "$(MODEL)" $(if $(WRITE),--write,)
+	@if [ -z "$(MODEL)" ]; then echo "Uso: make overlay MODEL=<id> [PROVIDER=ollama|nan] [WRITE=1]"; exit 1; fi
+	@$(PYTHON) -m app.tools.overlay_generator --provider "$(PROVIDER)" --model "$(MODEL)" $(if $(WRITE),--write,)
 
 overlay-batch: $(VENV)/bin/pytest
-	@$(PYTHON) -m app.tools.overlay_generator --provider ollama --batch-missing $(if $(WRITE),--write,)
+	@$(PYTHON) -m app.tools.overlay_generator --provider "$(PROVIDER)" --batch-missing $(if $(WRITE),--write,)
 
 # Crear venv con Python 3.12 para ingest/clean-chroma (necesario si el venv principal es Python 3.14)
 venv312:

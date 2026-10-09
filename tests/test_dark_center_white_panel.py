@@ -9,7 +9,7 @@ def test_dark_center_column_is_white_with_light_tokens():
     css = STYLE_CSS.read_text(encoding="utf-8")
     matches = list(
         re.finditer(
-            r'\[data-theme="dark"\] \.column-center(?:,\s*\[data-theme="dark"\] \.column-center\.chat-area\.main-pane)?\s*\{',
+            r'\[data-theme="dark"\] \.column-center(?:\s*>\s*\.chat-column|,\s*\[data-theme="dark"\] \.column-center\.chat-area\.main-pane)?\s*\{',
             css,
         )
     )
@@ -53,8 +53,9 @@ def test_dark_center_header_and_composer_follow_light_surface():
     assert "[data-theme=\"dark\"] .column-center .chat-panel-header" in css
     header_idx = css.index('[data-theme="dark"] .column-center .chat-panel-header')
     header_block = css[header_idx : header_idx + 400]
-    assert "--chat-header-bg: #ffffff" in header_block
-    assert "background: #ffffff" in header_block
+    # Isla flotante: la cabecera va sobre la superficie clara, sin banda propia.
+    assert "--chat-header-bg: transparent" in header_block
+    assert "background: transparent" in header_block
     assert "[data-theme=\"dark\"] .column-center .composer-panel" in css
     assert "[data-theme=\"dark\"] .column-center .message-bubble.user" in css
     assert "[data-theme=\"dark\"] .column-center #btn-send.composer-send-btn" in css

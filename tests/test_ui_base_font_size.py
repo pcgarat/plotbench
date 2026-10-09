@@ -80,7 +80,7 @@ def test_font_sizes_use_rem_so_html_scale_reaches_the_whole_ui():
     leftover_tokens = PX_TYPE_TOKEN.findall(css)
     assert leftover_tokens == [], leftover_tokens
     assert "calc(0.6875rem * var(--sidebar-left-font-scale, 1))" in css
-    assert "calc(0.75rem * var(--sidebar-right-font-scale, 1))" in css
+    assert "calc(0.8125rem * var(--sidebar-right-font-scale, 1))" in css
 
 
 def test_conversation_image_size_stays_independent_of_base_font():
