@@ -719,6 +719,62 @@ def touch_conversation(db: Session, conversation_id: str) -> None:
         db.commit()
 
 
+def mark_conversations_deleted(db: Session, conversation_ids: list[str]) -> list[str]:
+    """Soft-delete en lote. No hace commit. Devuelve los ids que estaban activos."""
+    if not conversation_ids:
+        return []
+    now = datetime.utcnow()
+    touched: list[str] = []
+    seen: set[str] = set()
+    for conversation_id in conversation_ids:
+        if not conversation_id or conversation_id in seen:
+            continue
+        seen.add(conversation_id)
+        conv = get_conversation(db, conversation_id)
+        if not conv:
+            continue
+        conv.deleted_at = now
+        touched.append(conversation_id)
+    return touched
+
+
+def delete_messages_hard(db: Session, conversation_id: str, message_ids: set[str] | list[str]) -> list[str]:
+    """Borra esos mensajes (sin reparentar el subárbol). No hace commit."""
+    wanted = [mid for mid in message_ids if mid]
+    if not wanted:
+        return []
+    existing = (
+        db.query(Message)
+        .filter(Message.conversation_id == conversation_id, Message.id.in_(wanted))
+        .all()
+    )
+    found = [m.id for m in existing]
+    if not found:
+        return []
+    conv = get_conversation(db, conversation_id)
+    next_leaf = None
+    if conv and getattr(conv, "active_leaf_message_id", None) in set(found):
+        next_leaf = (
+            db.query(Message)
+            .filter(Message.conversation_id == conversation_id, ~Message.id.in_(found))
+            .order_by(Message.created_at.desc())
+            .first()
+        )
+    db.query(Message).filter(
+        Message.conversation_id == conversation_id,
+        Message.parent_id.in_(found),
+    ).update({Message.parent_id: None}, synchronize_session=False)
+    db.query(Message).filter(Message.id.in_(found)).update(
+        {Message.parent_id: None}, synchronize_session=False
+    )
+    db.query(Message).filter(Message.id.in_(found)).delete(synchronize_session=False)
+    if conv and getattr(conv, "active_leaf_message_id", None) in set(found):
+        conv.active_leaf_message_id = next_leaf.id if next_leaf else None
+        apply_auto_title(db, conv)
+    db.flush()
+    return found
+
+
 def delete_message(db: Session, conversation_id: str, message_id: str) -> bool:
     """Elimina un mensaje y reparenta sus hijos al padre del borrado."""
     msg = get_message(db, conversation_id, message_id)

@@ -1,8 +1,10 @@
+import { useEffect, useState } from "react";
 import { historyStore, CONV_GROUP_LABELS, isMessagesHistoryMode } from "../../store/history.js";
 import { sessionStore } from "../../store/session.js";
 import { useStore } from "../../hooks/useStore.js";
 import { getConversationGroup } from "../../lib/forest.js";
 import { formatDateTime } from "../../lib/dates.js";
+import { groupRootsByConversation, visibleHistoryNodeIds } from "../../lib/historyVisibleNodes.js";
 import {
   loadMessageTreeRoots,
   toggleMessageTreeNode,
@@ -12,11 +14,20 @@ import {
   onLeftHistorySortChange,
   onMessageHistorySearchInput,
   setLeftHistoryMode,
+  applyHistoryNodeClick,
+  applyHistoryNodeContextMenu,
+  deleteSelectedHistoryNodes,
 } from "../../app/historyActions.js";
 import { newConversation, newPromptGeneratorConversation, openMessageTreeNode } from "../../app/sessionActions.js";
 import { setLeftCollapsed } from "../layout/LayoutEffects.jsx";
 
-function MessageTreeNodeRow({ node, depth }) {
+function clampMenuPosition(x, y, width, height) {
+  const left = Math.min(Math.max(8, x), Math.max(8, window.innerWidth - width - 8));
+  const top = Math.min(Math.max(8, y), Math.max(8, window.innerHeight - height - 8));
+  return { left, top };
+}
+
+function MessageTreeNodeRow({ node, depth, visibleIds, selectedIds }) {
   const expanded = useStore(historyStore, (s) => !!(s.treeExpandedIds || {})[node.id]);
   const childrenMap = useStore(historyStore, (s) => s.treeChildrenByParent || {});
   const selectedId = useStore(historyStore, (s) => s.treeSelectedMessageId);
@@ -26,18 +37,40 @@ function MessageTreeNodeRow({ node, depth }) {
   const when = formatDateTime(node.created_at);
   const preview = node.content_preview || "(sin texto)";
   const title = node.conversation_title || "Conversación";
+  const selected = (selectedIds || []).includes(node.id);
+
+  function handleClick(e) {
+    if (e.target.closest(".message-tree-expand")) return;
+    const next = applyHistoryNodeClick(node.id, e, visibleIds);
+    if (next.shouldOpen) {
+      openMessageTreeNode(node.conversation_id, node.id);
+    }
+  }
+
+  function handleContextMenu(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    applyHistoryNodeContextMenu(node.id);
+    const menuEvent = new CustomEvent("history-context-menu", {
+      detail: { x: e.clientX, y: e.clientY },
+    });
+    document.dispatchEvent(menuEvent);
+  }
 
   return (
     <>
       <div
         className={`conversation-item message-tree-item${node.id === activeId ? " active" : ""}${
           node.is_fork_edge ? " conversation-item-fork message-tree-item-fork" : ""
-        }`}
+        }${selected ? " is-selected" : ""}`}
         data-id={node.id}
         data-conversation-id={node.conversation_id}
         data-depth={depth}
+        aria-selected={selected ? "true" : "false"}
         title={`${title} · ${when}`}
         style={{ paddingLeft: 8 + depth * 14 }}
+        onClick={handleClick}
+        onContextMenu={handleContextMenu}
       >
         <div className="conv-row">
           {node.has_children ? (
@@ -57,11 +90,7 @@ function MessageTreeNodeRow({ node, depth }) {
           ) : (
             <span className="message-tree-expand message-tree-expand-spacer" aria-hidden="true" />
           )}
-          <button
-            type="button"
-            className="message-tree-open"
-            onClick={() => openMessageTreeNode(node.conversation_id, node.id)}
-          >
+          <button type="button" className="message-tree-open">
             <span className="conv-title">
               {node.is_fork_edge ? <span className="conv-kind-badge" title="Fork">fork</span> : null}
               {node.is_fork_edge ? " " : null}
@@ -74,38 +103,81 @@ function MessageTreeNodeRow({ node, depth }) {
         </time>
       </div>
       {expanded
-        ? kids.map((ch) => <MessageTreeNodeRow key={ch.id} node={ch} depth={depth + 1} />)
+        ? kids.map((ch) => (
+            <MessageTreeNodeRow
+              key={ch.id}
+              node={ch}
+              depth={depth + 1}
+              visibleIds={visibleIds}
+              selectedIds={selectedIds}
+            />
+          ))
         : null}
     </>
   );
 }
 
-function groupRootsByConversation(roots) {
-  const byConv = new Map();
-  (roots || []).forEach((n) => {
-    const key = n.conversation_id;
-    if (!byConv.has(key)) {
-      byConv.set(key, {
-        conversation_id: key,
-        conversation_title: n.conversation_title || "Conversación",
-        created_at: n.created_at,
-        nodes: [],
-      });
-    }
-    const g = byConv.get(key);
-    g.nodes.push(n);
-    if (n.created_at && (!g.created_at || n.created_at > g.created_at)) g.created_at = n.created_at;
-  });
-  return Array.from(byConv.values()).map((g) => {
-    g.nodes.sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")) || String(a.id).localeCompare(String(b.id)));
-    return g;
-  });
+function HistoryContextMenu() {
+  const [menu, setMenu] = useState(null);
+  const selectedCount = useStore(historyStore, (s) => (s.treeMultiSelectedIds || []).length);
+
+  useEffect(() => {
+    const open = (e) => {
+      setMenu({ x: e.detail.x, y: e.detail.y });
+    };
+    document.addEventListener("history-context-menu", open);
+    return () => document.removeEventListener("history-context-menu", open);
+  }, []);
+
+  useEffect(() => {
+    if (!menu) return;
+    const close = (e) => {
+      if (e.target.closest && e.target.closest("#history-context-menu")) return;
+      setMenu(null);
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") setMenu(null);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menu]);
+
+  if (!menu || !selectedCount) return null;
+  const pos = clampMenuPosition(menu.x, menu.y, 180, 44);
+  return (
+    <div
+      id="history-context-menu"
+      className="history-context-menu"
+      role="menu"
+      style={{ left: pos.left, top: pos.top }}
+    >
+      <button
+        type="button"
+        className="msg-context-item"
+        role="menuitem"
+        onClick={async () => {
+          setMenu(null);
+          await deleteSelectedHistoryNodes();
+        }}
+      >
+        Eliminar
+      </button>
+    </div>
+  );
 }
 
 export function ConversationsList() {
   const roots = useStore(historyStore, (s) => s.treeRoots);
   const total = useStore(historyStore, (s) => s.treeRootsTotal);
   const deleted = useStore(historyStore, (s) => s.deletedConversations);
+  const childrenMap = useStore(historyStore, (s) => s.treeChildrenByParent || {});
+  const expandedIds = useStore(historyStore, (s) => s.treeExpandedIds || {});
+  const selectedIds = useStore(historyStore, (s) => s.treeMultiSelectedIds || []);
+  const visibleIds = visibleHistoryNodeIds(roots, childrenMap, expandedIds);
 
   const groups = { hoy: [], ayer: [], semana: [], anteriores: [] };
   groupRootsByConversation(roots).forEach((g) => {
@@ -128,7 +200,13 @@ export function ConversationsList() {
                   {g.conversation_title}
                 </div>
                 {g.nodes.map((n) => (
-                  <MessageTreeNodeRow key={n.id} node={n} depth={0} />
+                  <MessageTreeNodeRow
+                    key={n.id}
+                    node={n}
+                    depth={0}
+                    visibleIds={visibleIds}
+                    selectedIds={selectedIds}
+                  />
                 ))}
               </div>
             ))}
@@ -179,6 +257,7 @@ export function ConversationsList() {
           ))}
         </div>
       </div>
+      <HistoryContextMenu />
     </>
   );
 }

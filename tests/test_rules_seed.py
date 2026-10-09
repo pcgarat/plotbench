@@ -1,4 +1,4 @@
-"""Seed de reglas builtin del planificador (guías FLUX y Krea 2 POV)."""
+"""Seed de reglas builtin del planificador (guías FLUX, Krea 2 POV y fotorrealismo)."""
 from pathlib import Path
 
 from app.crud import delete_rule, get_rule, update_rule
@@ -7,6 +7,9 @@ from app.services.rules.seed import (
     FLUX_PROMPT_GUIDE_PATH,
     FLUX_PROMPT_GUIDE_RULE_ID,
     FLUX_PROMPT_GUIDE_TITLE,
+    KREA2_PHOTOREALISM_PATH,
+    KREA2_PHOTOREALISM_RULE_ID,
+    KREA2_PHOTOREALISM_TITLE,
     KREA2_POV_GUIDE_PATH,
     KREA2_POV_GUIDE_RULE_ID,
     KREA2_POV_GUIDE_TITLE,
@@ -19,6 +22,7 @@ from app.services.rules.seed import (
 
 _SEED = Path(__file__).resolve().parents[1] / "config" / "seed" / "planner_flux_prompts.md"
 _KREA2_SEED = Path(__file__).resolve().parents[1] / "config" / "seed" / "planner_krea2_pov_prompts.md"
+_KREA2_PHOTO_SEED = Path(__file__).resolve().parents[1] / "config" / "seed" / "planner_krea2_photorealism.md"
 _NO_MORALIZE_SEED = (
     Path(__file__).resolve().parents[1] / "config" / "seed" / "chat_no_moralize.md"
 )
@@ -70,12 +74,28 @@ def test_no_moralize_seed_file_is_chat_contract():
     assert len(text) < 2000
 
 
+def test_krea2_photorealism_seed_file_is_planner_contract():
+    text = _KREA2_PHOTO_SEED.read_text(encoding="utf-8")
+    _assert_planner_prompt_contract(text)
+    assert "Krea 2" in text
+    assert "KREA 2 - FOTOREALISMO" in text
+    assert "photograph" in text
+    assert "shallow depth of field" in text
+    assert "Forge" not in text
+    assert "CFG" not in text
+    assert "moodboard" not in text.lower()
+    assert "style reference" not in text.lower()
+    assert "Convierte esta narrativa" not in text
+    assert len(text) < 6000
+
+
 def test_seed_creates_planner_rule_when_missing(db_session):
     assert get_rule(db_session, FLUX_PROMPT_GUIDE_RULE_ID) is None
     assert get_rule(db_session, KREA2_POV_GUIDE_RULE_ID) is None
     assert get_rule(db_session, NO_MORALIZE_RULE_ID) is None
+    assert get_rule(db_session, KREA2_PHOTOREALISM_RULE_ID) is None
     created = seed_builtin_rules(db_session)
-    assert created == 3
+    assert created == 4
     rule = get_rule(db_session, FLUX_PROMPT_GUIDE_RULE_ID)
     assert rule is not None
     assert rule.title == FLUX_PROMPT_GUIDE_TITLE
@@ -92,16 +112,25 @@ def test_seed_creates_planner_rule_when_missing(db_session):
     assert no_moralize.title == NO_MORALIZE_TITLE
     assert no_moralize.scope == SCOPE_CHAT
     assert no_moralize.content == NO_MORALIZE_PATH.read_text(encoding="utf-8").strip()
+    photo = get_rule(db_session, KREA2_PHOTOREALISM_RULE_ID)
+    assert photo is not None
+    assert photo.title == KREA2_PHOTOREALISM_TITLE
+    assert photo.scope == SCOPE_PLANNER
+    assert photo.content == KREA2_PHOTOREALISM_PATH.read_text(encoding="utf-8").strip()
 
 
 def test_seed_is_idempotent_and_does_not_overwrite(db_session):
     seed_builtin_rules(db_session)
     update_rule(db_session, FLUX_PROMPT_GUIDE_RULE_ID, content="editado por el usuario")
+    update_rule(db_session, KREA2_PHOTOREALISM_RULE_ID, content="fotorrealismo editado")
     created = seed_builtin_rules(db_session)
     assert created == 0
     rule = get_rule(db_session, FLUX_PROMPT_GUIDE_RULE_ID)
     assert rule.content == "editado por el usuario"
     assert rule.title == FLUX_PROMPT_GUIDE_TITLE
+    photo = get_rule(db_session, KREA2_PHOTOREALISM_RULE_ID)
+    assert photo.content == "fotorrealismo editado"
+    assert photo.title == KREA2_PHOTOREALISM_TITLE
 
 
 def test_seed_refreshes_krea2_pov_guide_from_file(db_session):
@@ -145,6 +174,7 @@ def test_startup_seeds_planner_rule_not_chat(client):
     chat = client.get("/api/rules").json()
     assert all(item["id"] != FLUX_PROMPT_GUIDE_RULE_ID for item in chat)
     assert all(item["id"] != KREA2_POV_GUIDE_RULE_ID for item in chat)
+    assert all(item["id"] != KREA2_PHOTOREALISM_RULE_ID for item in chat)
     planner = client.get("/api/rules", params={"scope": "planner"}).json()
     match = [item for item in planner if item["id"] == FLUX_PROMPT_GUIDE_RULE_ID]
     assert len(match) == 1
@@ -154,6 +184,10 @@ def test_startup_seeds_planner_rule_not_chat(client):
     assert len(krea) == 1
     assert krea[0]["title"] == KREA2_POV_GUIDE_TITLE
     assert krea[0]["scope"] == SCOPE_PLANNER
+    photo = [item for item in planner if item["id"] == KREA2_PHOTOREALISM_RULE_ID]
+    assert len(photo) == 1
+    assert photo[0]["title"] == KREA2_PHOTOREALISM_TITLE
+    assert photo[0]["scope"] == SCOPE_PLANNER
 
 
 def test_startup_seeds_no_moralize_in_chat_scope(client):

@@ -10,3 +10,10 @@ export function listMessageTreeRoots({ limit = 50, offset = 0 } = {}) {
 export function listMessageTreeChildren(messageId) {
   return fetchJson(`${API}/message-tree/${encodeURIComponent(messageId)}/children`);
 }
+
+export function deleteHistoryNodes(messageIds) {
+  return fetchJson(`${API}/message-tree/delete`, {
+    method: "POST",
+    body: JSON.stringify({ message_ids: messageIds || [] }),
+  });
+}

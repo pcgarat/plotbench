@@ -1721,6 +1721,38 @@ img.chat-illustration.illustration-debug-highlight {
   font-weight: 700;
 }
 
+.conversations-list {
+  user-select: none;
+}
+
+.conversation-item.is-selected {
+  background: color-mix(in srgb, var(--accent, #5b8def) 12%, var(--bg-input, var(--sidebar)));
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent, #5b8def) 70%, transparent);
+}
+
+.conversation-item.is-selected.active {
+  background: var(--sidebar-item-active);
+}
+
+.history-context-menu {
+  position: fixed;
+  z-index: 85;
+  min-width: 180px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background, #fff);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+[data-theme="dark"] .history-context-menu {
+  background: var(--sidebar);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
 .conversation-item-fork {
   opacity: 0.96;
 }

@@ -1,4 +1,4 @@
-"""Reglas builtin de la biblioteca. FLUX no se pisa; la guía POV se reescribe desde fichero."""
+"""Reglas builtin de la biblioteca. FLUX y fotorrealismo Krea 2 no se pisan; la guía POV se reescribe desde fichero."""
 
 from __future__ import annotations
 
@@ -16,12 +16,15 @@ FLUX_PROMPT_GUIDE_RULE_ID = "a8f3c2e1-4b5d-4e6a-9c1f-7d2e8b0a4f31"
 FLUX_PROMPT_GUIDE_TITLE = "Guía prompts FLUX"
 KREA2_POV_GUIDE_RULE_ID = "2263d058-31a1-4249-81c2-bad16367b43b"
 KREA2_POV_GUIDE_TITLE = "Guía Krea 2 POV"
+KREA2_PHOTOREALISM_RULE_ID = "7b9e4c12-8a3d-4f61-9e2b-5c8d1a0f6e47"
+KREA2_PHOTOREALISM_TITLE = "KREA 2 - FOTOREALISMO"
 NO_MORALIZE_RULE_ID = "5b17c9d4-6e2a-4f83-9a71-0c3d8be14f52"
 NO_MORALIZE_TITLE = "No moralizar"
 
 _SEED_DIR = Path(__file__).resolve().parents[3] / "config" / "seed"
 FLUX_PROMPT_GUIDE_PATH = _SEED_DIR / "planner_flux_prompts.md"
 KREA2_POV_GUIDE_PATH = _SEED_DIR / "planner_krea2_pov_prompts.md"
+KREA2_PHOTOREALISM_PATH = _SEED_DIR / "planner_krea2_photorealism.md"
 NO_MORALIZE_PATH = _SEED_DIR / "chat_no_moralize.md"
 
 # (id, título, fichero, scope, reescribir si existe). update_existing=False respeta
@@ -29,6 +32,7 @@ NO_MORALIZE_PATH = _SEED_DIR / "chat_no_moralize.md"
 _BUILTIN_RULES = (
     (FLUX_PROMPT_GUIDE_RULE_ID, FLUX_PROMPT_GUIDE_TITLE, FLUX_PROMPT_GUIDE_PATH, SCOPE_PLANNER, False),
     (KREA2_POV_GUIDE_RULE_ID, KREA2_POV_GUIDE_TITLE, KREA2_POV_GUIDE_PATH, SCOPE_PLANNER, True),
+    (KREA2_PHOTOREALISM_RULE_ID, KREA2_PHOTOREALISM_TITLE, KREA2_PHOTOREALISM_PATH, SCOPE_PLANNER, False),
     (NO_MORALIZE_RULE_ID, NO_MORALIZE_TITLE, NO_MORALIZE_PATH, SCOPE_CHAT, True),
 )
 
