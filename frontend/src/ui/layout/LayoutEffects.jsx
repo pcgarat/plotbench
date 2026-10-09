@@ -54,6 +54,9 @@ export function LayoutEffects() {
     initSidebarTabs();
   }, []);
   useEffect(() => {
+    initAccordionState();
+  }, [layout.accordion]);
+  useEffect(() => {
     const onFs = () => {
       if (!document.fullscreenElement && layoutStore.get().chatFullscreen) {
         const backup = layoutStore.get().fullscreenBackup;

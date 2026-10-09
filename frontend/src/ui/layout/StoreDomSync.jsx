@@ -49,6 +49,8 @@ export function StoreDomSync() {
   const contract = useStore(settingsStore, (s) => s.contract);
   const paramsConfig = useStore(settingsStore, (s) => s.paramsConfig);
   const paramsValues = useStore(settingsStore, (s) => s.paramsValues);
+  const historyTurns = useStore(settingsStore, (s) => s.historyTurns);
+  const saveToChromadb = useStore(settingsStore, (s) => s.saveToChromadb);
   const plannerContract = useStore(imagesStore, (s) => s.plannerContract);
   const useChatConfig = useStore(imagesStore, (s) => s.prefs.use_chat_config);
   useStore(uiStore);
@@ -126,6 +128,13 @@ export function StoreDomSync() {
     const sortWrap = document.getElementById("left-history-sort");
     if (sortWrap) sortWrap.hidden = true;
   }, [mode]);
+
+  useEffect(() => {
+    const turns = document.getElementById("history-turns-input");
+    if (turns && turns !== document.activeElement) turns.value = String(historyTurns);
+    const chroma = document.getElementById("save-to-chromadb-select");
+    if (chroma && chroma !== document.activeElement) chroma.value = saveToChromadb;
+  }, [historyTurns, saveToChromadb]);
 
   useEffect(() => {
     syncDebugPanelDom();

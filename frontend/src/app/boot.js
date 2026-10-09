@@ -34,8 +34,10 @@ export async function bootApp() {
   applyConsultaChrome();
   await loadProviders();
   const providers = settingsStore.get().providers;
+  const preferred = settingsStore.get().currentProvider;
+  const order = [preferred, ...providers.filter((p) => p !== preferred)];
   let loaded = false;
-  for (const p of providers) {
+  for (const p of order) {
     if (await tryLoadModelsForProvider(p)) {
       loaded = true;
       break;
@@ -45,7 +47,7 @@ export async function bootApp() {
     showError("No se pudo cargar modelos de ningún proveedor. Comprueba Ollama/Mancer.");
   }
   await loadParamsForProvider(settingsStore.get().currentProvider);
-  await loadModelContract({ applyParamDefaults: true });
+  await loadModelContract({ applyParamDefaults: settingsStore.get().paramsSource !== "user" });
   await refreshLeftHistory();
   const storedId = readLastConversationId();
   if (storedId) {

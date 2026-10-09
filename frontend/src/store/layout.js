@@ -387,7 +387,16 @@ export function setAccordionSectionOpen(section, isOpen) {
 }
 
 export function initAccordionState() {
+  const stored = layoutStore.get().accordion || {};
   document.querySelectorAll(".accordion-list").forEach((list) => {
+    const sections = Array.from(list.children).filter((el) =>
+      el.classList.contains("accordion-section")
+    );
+    const saved = sections.filter((s) => s.dataset.accordionSection && stored[s.dataset.accordionSection] != null);
+    if (saved.length) {
+      sections.forEach((s) => setAccordionSectionOpen(s, !!stored[s.dataset.accordionSection]));
+      return;
+    }
     const first = list.querySelector(":scope > .accordion-section.is-open");
     if (!first) return;
     getSiblingAccordionSections(first).forEach((s) => {
