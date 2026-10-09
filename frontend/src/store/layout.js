@@ -2,12 +2,18 @@ import { createStore } from "./createStore.js";
 
 export const SIDEBAR_TAB_STORAGE_KEY = "chatbot_sidebar_tab";
 export const SIDEBAR_MAIN_SECTION_IDS = ["reglas", "parametros", "imagenes", "preferencias"];
-export const UI_BASE_FONT_SCALE_MIN = 0.8;
+export const UI_BASE_FONT_SCALE_MIN = 0.05;
 export const UI_BASE_FONT_SCALE_MAX = 5;
 export const UI_BASE_FONT_SCALE_STEP = 0.05;
 export const UI_BASE_FONT_SCALE_DEFAULT = 1;
+export const SIDEBAR_FONT_SCALE_MIN = 0.05;
+export const SIDEBAR_FONT_SCALE_STEP = 0.05;
 export const SIDEBAR_FONT_SCALE_MAX = 5;
 export const FONT_SIZE_MAX = 5;
+export const FONT_SIZE_MIN = 0.05;
+export const FONT_SIZE_STEP = 0.05;
+export const IMAGE_SIZE_MIN = 0.05;
+export const IMAGE_SIZE_STEP = 0.05;
 export const IMAGE_SIZE_MAX = 1;
 export const LEFT_MAX = 420;
 export const RIGHT_MAX = 480;
@@ -68,11 +74,11 @@ export const layoutStore = createStore({
   centerGalleryVisible: readBool("centerGalleryVisible"),
   centerQueueVisible: readBool("centerQueueVisible"),
   centerChatGalleryShare: readNumber("centerChatGalleryShare", 0.5, SHARE_MIN, SHARE_MAX),
-  uiBaseFontScale: readNumber("uiBaseFontScale", 1, 0.8, 5),
-  conversationFontRem: readNumber("chatbot_conversation_font_size_rem", 0.8, 0.65, 5),
-  sidebarLeftFontScale: readNumber("sidebarLeftFontScale", 1, 0.8, 5),
-  sidebarRightFontScale: readNumber("sidebarRightFontScale", 1, 0.8, 5),
-  imageSizeFactor: readNumber("chatbot_conversation_image_size", 1, 0.4, 1),
+  uiBaseFontScale: readNumber("uiBaseFontScale", 1, UI_BASE_FONT_SCALE_MIN, 5),
+  conversationFontRem: readNumber("chatbot_conversation_font_size_rem", 0.8, FONT_SIZE_MIN, 5),
+  sidebarLeftFontScale: readNumber("sidebarLeftFontScale", 1, SIDEBAR_FONT_SCALE_MIN, 5),
+  sidebarRightFontScale: readNumber("sidebarRightFontScale", 1, SIDEBAR_FONT_SCALE_MIN, 5),
+  imageSizeFactor: readNumber("chatbot_conversation_image_size", 1, IMAGE_SIZE_MIN, 1),
   readingWidthPx: readInt("chatbot_reading_mode_width_px", 832, 320, 2400),
   autoScrollDuringGeneration: localStorage.getItem("autoScrollDuringGeneration") !== "false",
   renderMarkdown: localStorage.getItem("renderMarkdown") !== "false",
@@ -291,13 +297,19 @@ export function setUiBaseFontScale(delta) {
 export function setSidebarFontScale(side, delta) {
   const key = side === "left" ? "sidebarLeftFontScale" : "sidebarRightFontScale";
   const current = layoutStore.get()[key];
-  const next = Math.max(0.8, Math.min(SIDEBAR_FONT_SCALE_MAX, Math.round((current + delta) / 0.05) * 0.05));
+  const next = Math.max(
+    SIDEBAR_FONT_SCALE_MIN,
+    Math.min(SIDEBAR_FONT_SCALE_MAX, Math.round((current + delta) / SIDEBAR_FONT_SCALE_STEP) * SIDEBAR_FONT_SCALE_STEP)
+  );
   updateLayout({ [key]: next });
 }
 
 export function setConversationImageSize(delta) {
   const current = layoutStore.get().imageSizeFactor;
-  const next = Math.max(0.4, Math.min(IMAGE_SIZE_MAX, Math.round((current + delta) / 0.1) * 0.1));
+  const next = Math.max(
+    IMAGE_SIZE_MIN,
+    Math.min(IMAGE_SIZE_MAX, Math.round((current + delta) / IMAGE_SIZE_STEP) * IMAGE_SIZE_STEP)
+  );
   updateLayout({ imageSizeFactor: next });
   applyConversationImageSize(next);
 }

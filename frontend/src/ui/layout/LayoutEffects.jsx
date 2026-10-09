@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect } from "react";
-import { layoutStore, applyDocumentLayout, applySidebarTab, updateLayout, LAYOUT_KEYS, captureLayoutSnapshot, restoreLayoutSnapshot, initSidePanelResize, initAccordionState, initSidebarTabs, formatFontSizeLabel } from "../../store/layout.js";
+import { layoutStore, applyDocumentLayout, applySidebarTab, updateLayout, LAYOUT_KEYS, captureLayoutSnapshot, restoreLayoutSnapshot, initSidePanelResize, initAccordionState, initSidebarTabs, formatFontSizeLabel, UI_BASE_FONT_SCALE_MIN, UI_BASE_FONT_SCALE_MAX, UI_BASE_FONT_SCALE_STEP, FONT_SIZE_MIN, FONT_SIZE_MAX, FONT_SIZE_STEP, SIDEBAR_FONT_SCALE_MIN, SIDEBAR_FONT_SCALE_MAX, SIDEBAR_FONT_SCALE_STEP, IMAGE_SIZE_MIN, IMAGE_SIZE_MAX, IMAGE_SIZE_STEP } from "../../store/layout.js";
 import { useStore } from "../../hooks/useStore.js";
 import { initImagesPanel, initImageGallery } from "../../app/imagesPanel.js";
 import { initImageQueuePanel } from "../../app/queueActions.js";
@@ -119,19 +119,34 @@ export function toggleChatFullscreen() {
 export function nudgeFont(which, delta) {
   const s = layoutStore.get();
   if (which === "base") {
-    const next = Math.max(0.8, Math.min(5, Math.round((s.uiBaseFontScale + delta) / 0.05) * 0.05));
+    const next = Math.max(
+      UI_BASE_FONT_SCALE_MIN,
+      Math.min(UI_BASE_FONT_SCALE_MAX, Math.round((s.uiBaseFontScale + delta) / UI_BASE_FONT_SCALE_STEP) * UI_BASE_FONT_SCALE_STEP)
+    );
     updateLayout({ uiBaseFontScale: next });
   } else if (which === "chat") {
-    const next = Math.max(0.65, Math.min(5, Math.round((s.conversationFontRem + delta) / 0.05) * 0.05));
+    const next = Math.max(
+      FONT_SIZE_MIN,
+      Math.min(FONT_SIZE_MAX, Math.round((s.conversationFontRem + delta) / FONT_SIZE_STEP) * FONT_SIZE_STEP)
+    );
     updateLayout({ conversationFontRem: next });
   } else if (which === "left") {
-    const next = Math.max(0.8, Math.min(5, Math.round((s.sidebarLeftFontScale + delta) / 0.05) * 0.05));
+    const next = Math.max(
+      SIDEBAR_FONT_SCALE_MIN,
+      Math.min(SIDEBAR_FONT_SCALE_MAX, Math.round((s.sidebarLeftFontScale + delta) / SIDEBAR_FONT_SCALE_STEP) * SIDEBAR_FONT_SCALE_STEP)
+    );
     updateLayout({ sidebarLeftFontScale: next });
   } else if (which === "right") {
-    const next = Math.max(0.8, Math.min(5, Math.round((s.sidebarRightFontScale + delta) / 0.05) * 0.05));
+    const next = Math.max(
+      SIDEBAR_FONT_SCALE_MIN,
+      Math.min(SIDEBAR_FONT_SCALE_MAX, Math.round((s.sidebarRightFontScale + delta) / SIDEBAR_FONT_SCALE_STEP) * SIDEBAR_FONT_SCALE_STEP)
+    );
     updateLayout({ sidebarRightFontScale: next });
   } else if (which === "image") {
-    const next = Math.max(0.4, Math.min(1, Math.round((s.imageSizeFactor + delta) / 0.1) * 0.1));
+    const next = Math.max(
+      IMAGE_SIZE_MIN,
+      Math.min(IMAGE_SIZE_MAX, Math.round((s.imageSizeFactor + delta) / IMAGE_SIZE_STEP) * IMAGE_SIZE_STEP)
+    );
     updateLayout({ imageSizeFactor: next });
   }
 }

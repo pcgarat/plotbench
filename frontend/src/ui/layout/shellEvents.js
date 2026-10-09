@@ -237,11 +237,11 @@ export async function onAppClick(e) {
       break;
     case "pref-image-decrease":
     case "reading-image-decrease":
-      nudgeFont("image", -0.1);
+      nudgeFont("image", -0.05);
       break;
     case "pref-image-increase":
     case "reading-image-increase":
-      nudgeFont("image", 0.1);
+      nudgeFont("image", 0.05);
       break;
     case "btn-collapse-all-messages":
     case "pref-collapse-all-messages":
