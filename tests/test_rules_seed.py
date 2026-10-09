@@ -2,7 +2,7 @@
 from pathlib import Path
 
 from app.crud import delete_rule, get_rule, update_rule
-from app.services.rules.models import SCOPE_PLANNER
+from app.services.rules.models import SCOPE_CHAT, SCOPE_PLANNER
 from app.services.rules.seed import (
     FLUX_PROMPT_GUIDE_PATH,
     FLUX_PROMPT_GUIDE_RULE_ID,
@@ -10,12 +10,18 @@ from app.services.rules.seed import (
     KREA2_POV_GUIDE_PATH,
     KREA2_POV_GUIDE_RULE_ID,
     KREA2_POV_GUIDE_TITLE,
+    NO_MORALIZE_PATH,
+    NO_MORALIZE_RULE_ID,
+    NO_MORALIZE_TITLE,
     ensure_rule_from_file,
     seed_builtin_rules,
 )
 
 _SEED = Path(__file__).resolve().parents[1] / "config" / "seed" / "planner_flux_prompts.md"
 _KREA2_SEED = Path(__file__).resolve().parents[1] / "config" / "seed" / "planner_krea2_pov_prompts.md"
+_NO_MORALIZE_SEED = (
+    Path(__file__).resolve().parents[1] / "config" / "seed" / "chat_no_moralize.md"
+)
 
 
 def _assert_planner_prompt_contract(text: str) -> None:
@@ -56,11 +62,20 @@ def test_krea2_pov_seed_file_is_planner_contract():
     assert len(text) < 4000
 
 
+def test_no_moralize_seed_file_is_chat_contract():
+    text = _NO_MORALIZE_SEED.read_text(encoding="utf-8")
+    assert "moral" in text.lower()
+    assert "No añadas juicios morales" in text
+    assert "como IA no puedo" in text
+    assert len(text) < 2000
+
+
 def test_seed_creates_planner_rule_when_missing(db_session):
     assert get_rule(db_session, FLUX_PROMPT_GUIDE_RULE_ID) is None
     assert get_rule(db_session, KREA2_POV_GUIDE_RULE_ID) is None
+    assert get_rule(db_session, NO_MORALIZE_RULE_ID) is None
     created = seed_builtin_rules(db_session)
-    assert created == 2
+    assert created == 3
     rule = get_rule(db_session, FLUX_PROMPT_GUIDE_RULE_ID)
     assert rule is not None
     assert rule.title == FLUX_PROMPT_GUIDE_TITLE
@@ -72,6 +87,11 @@ def test_seed_creates_planner_rule_when_missing(db_session):
     assert krea.title == KREA2_POV_GUIDE_TITLE
     assert krea.scope == SCOPE_PLANNER
     assert krea.content == KREA2_POV_GUIDE_PATH.read_text(encoding="utf-8").strip()
+    no_moralize = get_rule(db_session, NO_MORALIZE_RULE_ID)
+    assert no_moralize is not None
+    assert no_moralize.title == NO_MORALIZE_TITLE
+    assert no_moralize.scope == SCOPE_CHAT
+    assert no_moralize.content == NO_MORALIZE_PATH.read_text(encoding="utf-8").strip()
 
 
 def test_seed_is_idempotent_and_does_not_overwrite(db_session):
@@ -134,3 +154,14 @@ def test_startup_seeds_planner_rule_not_chat(client):
     assert len(krea) == 1
     assert krea[0]["title"] == KREA2_POV_GUIDE_TITLE
     assert krea[0]["scope"] == SCOPE_PLANNER
+
+
+def test_startup_seeds_no_moralize_in_chat_scope(client):
+    """La regla «No moralizar» es de chat: debe listarse en la biblioteca del panel, no en planner."""
+    chat = client.get("/api/rules").json()
+    rule = [item for item in chat if item["id"] == NO_MORALIZE_RULE_ID]
+    assert len(rule) == 1
+    assert rule[0]["title"] == NO_MORALIZE_TITLE
+    assert rule[0]["scope"] == SCOPE_CHAT
+    planner = client.get("/api/rules", params={"scope": "planner"}).json()
+    assert all(item["id"] != NO_MORALIZE_RULE_ID for item in planner)

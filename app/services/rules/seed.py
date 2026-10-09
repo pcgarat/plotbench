@@ -8,7 +8,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.models import Rule
-from app.services.rules.models import SCOPE_PLANNER
+from app.services.rules.models import SCOPE_CHAT, SCOPE_PLANNER
 
 logger = logging.getLogger(__name__)
 
@@ -16,27 +16,33 @@ FLUX_PROMPT_GUIDE_RULE_ID = "a8f3c2e1-4b5d-4e6a-9c1f-7d2e8b0a4f31"
 FLUX_PROMPT_GUIDE_TITLE = "Guía prompts FLUX"
 KREA2_POV_GUIDE_RULE_ID = "2263d058-31a1-4249-81c2-bad16367b43b"
 KREA2_POV_GUIDE_TITLE = "Guía Krea 2 POV"
+NO_MORALIZE_RULE_ID = "5b17c9d4-6e2a-4f83-9a71-0c3d8be14f52"
+NO_MORALIZE_TITLE = "No moralizar"
 
 _SEED_DIR = Path(__file__).resolve().parents[3] / "config" / "seed"
 FLUX_PROMPT_GUIDE_PATH = _SEED_DIR / "planner_flux_prompts.md"
 KREA2_POV_GUIDE_PATH = _SEED_DIR / "planner_krea2_pov_prompts.md"
+NO_MORALIZE_PATH = _SEED_DIR / "chat_no_moralize.md"
 
-_BUILTIN_PLANNER_RULES = (
-    (FLUX_PROMPT_GUIDE_RULE_ID, FLUX_PROMPT_GUIDE_TITLE, FLUX_PROMPT_GUIDE_PATH, False),
-    (KREA2_POV_GUIDE_RULE_ID, KREA2_POV_GUIDE_TITLE, KREA2_POV_GUIDE_PATH, True),
+# (id, título, fichero, scope, reescribir si existe). update_existing=False respeta
+# las ediciones del usuario; True mantiene el fichero como fuente de verdad.
+_BUILTIN_RULES = (
+    (FLUX_PROMPT_GUIDE_RULE_ID, FLUX_PROMPT_GUIDE_TITLE, FLUX_PROMPT_GUIDE_PATH, SCOPE_PLANNER, False),
+    (KREA2_POV_GUIDE_RULE_ID, KREA2_POV_GUIDE_TITLE, KREA2_POV_GUIDE_PATH, SCOPE_PLANNER, True),
+    (NO_MORALIZE_RULE_ID, NO_MORALIZE_TITLE, NO_MORALIZE_PATH, SCOPE_CHAT, True),
 )
 
 
 def seed_builtin_rules(db: Session) -> int:
-    """Crea reglas builtin que aún no existen. La guía POV se reescribe desde fichero."""
+    """Crea reglas builtin que aún no existen. Las marcadas se reescriben desde fichero."""
     created = 0
-    for rule_id, title, path, update_existing in _BUILTIN_PLANNER_RULES:
+    for rule_id, title, path, scope, update_existing in _BUILTIN_RULES:
         created += ensure_rule_from_file(
             db,
             rule_id=rule_id,
             title=title,
             path=path,
-            scope=SCOPE_PLANNER,
+            scope=scope,
             update_existing=update_existing,
         )
     return created
