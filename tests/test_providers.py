@@ -1091,7 +1091,7 @@ class TestNanProvider:
             assert isinstance(provider, LLMProvider)
 
     def test_list_models_enriches_known_catalog(self):
-        """list_models enriquece IDs de la API con context_length y display_name del catálogo."""
+        """list_models enriquece IDs de la API con display_name del catálogo (contexto por preset)."""
         with patch("app.providers.nan.settings") as mock_settings:
             mock_settings.nan_api_key = "sk-nan-test"
             mock_settings.nan_base_url = "https://api.nan.builders"
@@ -1112,10 +1112,38 @@ class TestNanProvider:
             models = provider.list_models()
         assert len(models) == 2
         by_name = {m.name: m for m in models}
-        assert by_name["deepseek-v4-flash"].context_length == 1_048_576
-        assert by_name["gemma4"].context_length == 262_144
+        # El contexto no se duplica en el catálogo: lo aporta el preset (config/nan.json).
+        assert by_name["deepseek-v4-flash"].context_length is None
+        assert by_name["gemma4"].context_length is None
         assert by_name["deepseek-v4-flash"].display_name is not None
         assert by_name["deepseek-v4-flash"].provider == "nan"
+
+    def test_list_models_filtra_modelos_no_chat(self):
+        """Los modelos no conversacionales (embedding/audio/imagen) se ocultan del selector."""
+        with patch("app.providers.nan.settings") as mock_settings:
+            mock_settings.nan_api_key = "sk-nan-test"
+            mock_settings.nan_base_url = "https://api.nan.builders"
+            mock_settings.verbose = False
+            from app.providers.nan import NanProvider
+            provider = NanProvider()
+        with patch("app.providers.nan.httpx") as mock_httpx:
+            mock_resp = MagicMock()
+            mock_resp.json.return_value = {
+                "data": [
+                    {"id": "deepseek-v4-flash", "object": "model"},
+                    {"id": "qwen3-embedding", "object": "model"},
+                    {"id": "rerank", "object": "model"},
+                    {"id": "whisper", "object": "model"},
+                    {"id": "kokoro", "object": "model"},
+                    {"id": "flux-2-klein", "object": "model"},
+                    {"id": "qwen-image-2.1", "object": "model"},
+                ]
+            }
+            mock_resp.raise_for_status = MagicMock()
+            mock_httpx.Client.return_value.__enter__.return_value.get.return_value = mock_resp
+            mock_httpx.Client.return_value.__exit__.return_value = None
+            models = provider.list_models()
+        assert [m.name for m in models] == ["deepseek-v4-flash"]
 
     def test_list_models_does_not_invent_models(self):
         """A diferencia de abliteration, NaN solo lista lo que la API devuelve (no añade catálogo)."""
@@ -1236,6 +1264,7 @@ class TestNanProvider:
         }
 
     def test_show_model_uses_known_catalog(self):
+        """El contexto no se resuelve ya por show_model (vive en el preset)."""
         with patch("app.providers.nan.settings") as mock_settings:
             mock_settings.nan_api_key = "sk-nan-test"
             mock_settings.nan_base_url = "https://api.nan.builders"
@@ -1249,11 +1278,26 @@ class TestNanProvider:
             mock_httpx.Client.return_value.__exit__.return_value = None
             result = provider.show_model("deepseek-v4-flash")
         assert result is not None
-        assert result["context_length"] == 1_048_576
+        assert "context_length" not in result
+        assert result["display_name"] is not None
         assert "fetched_at" in result
 
+    def test_show_model_desconocido_devuelve_none(self):
+        with patch("app.providers.nan.settings") as mock_settings:
+            mock_settings.nan_api_key = "sk-nan-test"
+            mock_settings.nan_base_url = "https://api.nan.builders"
+            mock_settings.verbose = False
+            from app.providers.nan import NanProvider
+            provider = NanProvider()
+        with patch("app.providers.nan.httpx") as mock_httpx:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 404
+            mock_httpx.Client.return_value.__enter__.return_value.get.return_value = mock_resp
+            mock_httpx.Client.return_value.__exit__.return_value = None
+            assert provider.show_model("no-existe") is None
+
     def test_model_facts_desde_catalogo(self):
-        """model_facts expone los hechos fiables del catálogo (puerto ModelFacts)."""
+        """model_facts combina capacidades del catálogo y contexto del preset."""
         with patch("app.providers.nan.settings") as mock_settings:
             mock_settings.nan_api_key = "sk-nan-test"
             mock_settings.nan_base_url = "https://api.nan.builders"
