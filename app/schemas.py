@@ -289,6 +289,15 @@ class MessageTreeListResponse(BaseModel):
     offset: int
 
 
+class HistoryDeleteRequest(BaseModel):
+    message_ids: list[str] = Field(default_factory=list)
+
+
+class HistoryDeleteResponse(BaseModel):
+    trashed_conversation_ids: list[str] = Field(default_factory=list)
+    deleted_message_ids: list[str] = Field(default_factory=list)
+
+
 class ForgePanelParamFields(BaseModel):
     """steps/width/height/seed opcionales del panel Imágenes (None = replay del último gen)."""
 

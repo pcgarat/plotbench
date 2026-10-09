@@ -6,7 +6,14 @@ from sqlalchemy.orm import Session
 from app.auth import CurrentUser
 from app.db import get_db
 from app.ownership import require_owned_conversation
-from app.schemas import MessageTreeListResponse, MessageTreeNode
+from app.rag import delete_message_document
+from app.schemas import (
+    HistoryDeleteRequest,
+    HistoryDeleteResponse,
+    MessageTreeListResponse,
+    MessageTreeNode,
+)
+from app.services import history_delete as history_delete_svc
 from app.services import message_tree as mt
 
 router = APIRouter(prefix="/api", tags=["message-tree"])
@@ -47,6 +54,27 @@ def list_message_tree_roots(
         total=page.total,
         limit=page.limit,
         offset=page.offset,
+    )
+
+
+@router.post("/message-tree/delete", response_model=HistoryDeleteResponse)
+def delete_history_nodes(
+    body: HistoryDeleteRequest, user: CurrentUser, db: Session = Depends(get_db)
+):
+    ids = [mid for mid in (body.message_ids or []) if isinstance(mid, str) and mid.strip()]
+    if not ids:
+        raise HTTPException(status_code=400, detail="Indica al menos un mensaje")
+    result = history_delete_svc.delete_history_nodes(
+        db,
+        ids,
+        user_id=user.id,
+        include_unowned=bool(user.is_admin),
+    )
+    for conversation_id, message_id in result.deleted_message_refs:
+        delete_message_document(conversation_id, message_id)
+    return HistoryDeleteResponse(
+        trashed_conversation_ids=result.trashed_conversation_ids,
+        deleted_message_ids=result.deleted_message_ids,
     )
 
 

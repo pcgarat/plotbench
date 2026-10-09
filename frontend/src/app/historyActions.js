@@ -15,6 +15,13 @@ import {
   readStoredMessageSort,
 } from "../store/history.js";
 import { sessionStore, resetSession } from "../store/session.js";
+import {
+  isAdditiveHistoryClick,
+  isRangeHistoryClick,
+  nextHistorySelection,
+  selectionForContextMenu,
+} from "../lib/historySelection.js";
+import { visibleHistoryNodeIds } from "../lib/historyVisibleNodes.js";
 
 let messageHistoryLoadSeq = 0;
 let treeLoadSeq = 0;
@@ -288,4 +295,84 @@ export function messageHistoryWhenIso(item, sort) {
 
 export function renderMessageHistoryPager() {
   return "Cargar más";
+}
+
+export function currentHistoryVisibleIds(state = historyStore.get()) {
+  return visibleHistoryNodeIds(state.treeRoots, state.treeChildrenByParent, state.treeExpandedIds);
+}
+
+export function applyHistoryNodeClick(nodeId, event, visibleIds) {
+  const additive = isAdditiveHistoryClick(event);
+  const range = isRangeHistoryClick(event);
+  const state = historyStore.get();
+  const next = nextHistorySelection({
+    visibleIds: visibleIds || currentHistoryVisibleIds(state),
+    selectedIds: state.treeMultiSelectedIds || [],
+    anchorId: state.treeSelectionAnchorId,
+    clickedId: nodeId,
+    additive,
+    range,
+  });
+  historyStore.set({
+    treeMultiSelectedIds: next.selectedIds,
+    treeSelectionAnchorId: next.anchorId || null,
+  });
+  return { shouldOpen: !additive && !range };
+}
+
+export function applyHistoryNodeContextMenu(nodeId) {
+  const next = selectionForContextMenu(historyStore.get().treeMultiSelectedIds || [], nodeId);
+  historyStore.set({
+    treeMultiSelectedIds: next.selectedIds,
+    ...(next.anchorId ? { treeSelectionAnchorId: next.anchorId } : {}),
+  });
+}
+
+export function clearHistorySelection() {
+  historyStore.set({ treeMultiSelectedIds: [], treeSelectionAnchorId: null });
+}
+
+function historyDeleteNotice(result) {
+  const trashed = (result && result.trashed_conversation_ids) || [];
+  const deleted = (result && result.deleted_message_ids) || [];
+  if (trashed.length && !deleted.length) {
+    return trashed.length === 1
+      ? "Conversación movida a la papelera."
+      : `${trashed.length} conversaciones movidas a la papelera.`;
+  }
+  if (deleted.length && !trashed.length) {
+    return "Rama del fork eliminada.";
+  }
+  return "Historial actualizado.";
+}
+
+export async function deleteSelectedHistoryNodes() {
+  const ids = historyStore.get().treeMultiSelectedIds || [];
+  if (!ids.length) return;
+  const label = ids.length === 1 ? "este elemento" : `${ids.length} elementos`;
+  if (!window.confirm(`¿Eliminar ${label} del historial?`)) {
+    return;
+  }
+  try {
+    const result = await messageTreeApi.deleteHistoryNodes(ids);
+    const currentId = sessionStore.get().conversationId;
+    const trashed = (result && result.trashed_conversation_ids) || [];
+    const deleted = new Set((result && result.deleted_message_ids) || []);
+    const sessionIds = (sessionStore.get().allMessages || sessionStore.get().messages || []).map(
+      (m) => m && m.id
+    );
+    const hitOpenThread = sessionIds.some((id) => deleted.has(id));
+    clearHistorySelection();
+    if (currentId && trashed.includes(currentId)) {
+      resetSession();
+    } else if (hitOpenThread && currentId) {
+      const { setCurrentConversation } = await import("./sessionActions.js");
+      const conv = await conversationsApi.getConversation(currentId);
+      await setCurrentConversation(conv, { preserveView: true });
+    }
+    await refreshMessageTreePreservingExpansion();
+    showNotice(historyDeleteNotice(result));
+  } catch (e) {
+    showError("Error al borrar: " + e.message);
+  }
 }

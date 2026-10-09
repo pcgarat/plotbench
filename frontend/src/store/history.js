@@ -102,6 +102,8 @@ export const historyStore = createStore({
   treeChildrenByParent: {},
   treeExpandedIds: {},
   treeSelectedMessageId: null,
+  treeMultiSelectedIds: [],
+  treeSelectionAnchorId: null,
   loading: false,
 });
 
