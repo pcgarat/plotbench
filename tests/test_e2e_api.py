@@ -840,6 +840,22 @@ def test_e2e_planner_library_includes_builtin_krea2_pov_guide(client, ollama_ava
     assert all(item["id"] != KREA2_POV_GUIDE_RULE_ID for item in chat_list)
 
 
+def test_e2e_planner_library_includes_builtin_krea2_photorealism_guide(client, ollama_available):
+    """E2E: la guía Krea 2 fotorrealismo se siembra en scope=planner y no aparece en el chat."""
+    from app.services.rules.seed import KREA2_PHOTOREALISM_RULE_ID, KREA2_PHOTOREALISM_TITLE
+
+    planner_list = client.get("/api/rules", params={"scope": "planner"}).json()
+    match = [item for item in planner_list if item["id"] == KREA2_PHOTOREALISM_RULE_ID]
+    assert len(match) == 1
+    assert match[0]["title"] == KREA2_PHOTOREALISM_TITLE
+    assert match[0]["scope"] == "planner"
+    assert "photograph" in match[0]["content"]
+    assert "shallow depth of field" in match[0]["content"]
+
+    chat_list = client.get("/api/rules").json()
+    assert all(item["id"] != KREA2_PHOTOREALISM_RULE_ID for item in chat_list)
+
+
 def test_e2e_rule_delete_removes_from_db_and_from_all_conversations(client, ollama_available):
     """
     Al eliminar una regla de la biblioteca (DELETE /api/rules/{id}):

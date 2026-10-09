@@ -701,14 +701,20 @@ def test_illustrate_accepts_concatenated_builtin_planner_guides(client, db_sessi
     """El botón de ilustrar envía las reglas del planificador concatenadas; no debe 422."""
     from app import crud
     from app.services.rules.compose import concat_instruction_texts
-    from app.services.rules.seed import FLUX_PROMPT_GUIDE_PATH, KREA2_POV_GUIDE_PATH
+    from app.services.rules.seed import (
+        FLUX_PROMPT_GUIDE_PATH,
+        KREA2_PHOTOREALISM_PATH,
+        KREA2_POV_GUIDE_PATH,
+    )
 
     extra = concat_instruction_texts(
         FLUX_PROMPT_GUIDE_PATH.read_text(encoding="utf-8"),
         KREA2_POV_GUIDE_PATH.read_text(encoding="utf-8"),
+        KREA2_PHOTOREALISM_PATH.read_text(encoding="utf-8"),
     )
     assert "Guía de prompts visuales (FLUX)" in extra
     assert "Empieza cada prompt con `POV.`" in extra
+    assert "KREA 2 - FOTOREALISMO" in extra
 
     conv = crud.create_conversation(db_session, title="t", model_id="m", provider="ollama")
     msg = crud.add_message(db_session, conv.id, "assistant", "Había un faro al anochecer.")
