@@ -72,6 +72,8 @@ class Message(Base):
     parent_id = Column(String(36), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True, index=True)
     role = Column(String(32), nullable=False)  # user | assistant
     content = Column(Text, nullable=False)
+    # Título derivado de la primera frase del contenido (solo alfanumérico); buscable/ordenable.
+    title = Column(String(80), nullable=True, index=True)
     instruction_override = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     # Debug: payload enviado a Ollama (solo mensajes assistant)

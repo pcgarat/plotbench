@@ -1,30 +1,227 @@
 import { useEffect, useState } from "react";
-import { historyStore, CONV_GROUP_LABELS, isMessagesHistoryMode } from "../../store/history.js";
+import {
+  historyStore,
+  CONV_GROUP_LABELS,
+  CONV_SORT_OPTIONS,
+  MESSAGE_SEARCH_IN_OPTIONS,
+  MESSAGE_SORT_OPTIONS,
+  MESSAGE_SORT_DIRECTION_ASC,
+  defaultMessageSortDirection,
+  LEFT_HISTORY_MODE_MESSAGES,
+  LEFT_HISTORY_MODE_CONVERSATIONS,
+} from "../../store/history.js";
 import { sessionStore } from "../../store/session.js";
 import { useStore } from "../../hooks/useStore.js";
 import { getConversationGroup } from "../../lib/forest.js";
 import { formatDateTime } from "../../lib/dates.js";
 import { groupRootsByConversation, visibleHistoryNodeIds } from "../../lib/historyVisibleNodes.js";
 import {
+  loadMessageList,
   loadMessageTreeRoots,
   toggleMessageTreeNode,
   restoreConversationFromTrash,
   permanentlyDeleteFromTrash,
   emptyTrash,
   onLeftHistorySortChange,
+  onMessageSortDirectionToggle,
   onMessageHistorySearchInput,
+  onMessageSearchInChange,
+  onMessageModelFilterChange,
   setLeftHistoryMode,
   applyHistoryNodeClick,
   applyHistoryNodeContextMenu,
   deleteSelectedHistoryNodes,
 } from "../../app/historyActions.js";
-import { newConversation, newPromptGeneratorConversation, openMessageTreeNode } from "../../app/sessionActions.js";
+import {
+  newConversation,
+  newPromptGeneratorConversation,
+  openMessageTreeNode,
+  openIsolatedMessage,
+} from "../../app/sessionActions.js";
 import { setLeftCollapsed } from "../layout/LayoutEffects.jsx";
 
 function clampMenuPosition(x, y, width, height) {
   const left = Math.min(Math.max(8, x), Math.max(8, window.innerWidth - width - 8));
   const top = Math.min(Math.max(8, y), Math.max(8, window.innerHeight - height - 8));
   return { left, top };
+}
+
+/** Conmutador de vista del panel: mensajes (respuestas) o conversaciones (árbol). */
+export function HistoryModeSwitch() {
+  const mode = useStore(historyStore, (s) => s.mode);
+  const isMessages = mode !== LEFT_HISTORY_MODE_CONVERSATIONS;
+  return (
+    <div className="left-history-mode" id="left-history-mode" role="tablist" aria-label="Vista del historial">
+      <button
+        type="button"
+        role="tab"
+        id="btn-history-mode-messages"
+        className={`left-history-mode-btn${isMessages ? " is-active" : ""}`}
+        aria-selected={isMessages ? "true" : "false"}
+        onClick={() => setLeftHistoryMode(LEFT_HISTORY_MODE_MESSAGES)}
+      >
+        Mensajes
+      </button>
+      <button
+        type="button"
+        role="tab"
+        id="btn-history-mode-conversations"
+        className={`left-history-mode-btn${!isMessages ? " is-active" : ""}`}
+        aria-selected={!isMessages ? "true" : "false"}
+        onClick={() => setLeftHistoryMode(LEFT_HISTORY_MODE_CONVERSATIONS)}
+      >
+        Conversaciones
+      </button>
+    </div>
+  );
+}
+
+/** Búsqueda, ámbito, orden y filtro por modelo del listado de mensajes. */
+export function MessageListControls() {
+  const searchIn = useStore(historyStore, (s) => s.messageSearchIn);
+  const sort = useStore(historyStore, (s) => s.messageSort);
+  const direction = useStore(
+    historyStore,
+    (s) => s.messageSortDirection || defaultMessageSortDirection(s.messageSort || "date")
+  );
+  const query = useStore(historyStore, (s) => s.messageListQuery);
+  const modelFilter = useStore(historyStore, (s) => s.messageModelFilter);
+  const models = useStore(historyStore, (s) => s.messageModels);
+  const ascending = direction === MESSAGE_SORT_DIRECTION_ASC;
+  return (
+    <div className="message-list-controls" id="message-list-controls">
+      <input
+        type="search"
+        id="message-history-search"
+        className="message-history-search"
+        placeholder="Buscar mensajes"
+        aria-label="Buscar mensajes"
+        autoComplete="off"
+        value={query}
+        onChange={(e) => onMessageHistorySearchInput(e.target.value)}
+      />
+      <div className="message-list-filter-row">
+        <select
+          id="message-search-in"
+          className="left-history-sort-select"
+          aria-label="Ámbito de búsqueda"
+          value={searchIn}
+          onChange={(e) => onMessageSearchInChange(e.target.value)}
+        >
+          {MESSAGE_SEARCH_IN_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <div className="message-sort-order-group">
+          <select
+            id="left-history-sort-select"
+            className="left-history-sort-select"
+            aria-label="Ordenar mensajes"
+            value={sort}
+            onChange={(e) => onLeftHistorySortChange(e.target.value)}
+          >
+            {MESSAGE_SORT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            id="message-sort-direction"
+            className="message-sort-direction"
+            title={ascending ? "Orden ascendente" : "Orden descendente"}
+            aria-label={ascending ? "Orden ascendente" : "Orden descendente"}
+            aria-pressed={ascending ? "true" : "false"}
+            onClick={() => onMessageSortDirectionToggle()}
+          >
+            {ascending ? "↑" : "↓"}
+          </button>
+        </div>
+      </div>
+      <select
+        id="message-model-filter"
+        className="left-history-sort-select"
+        aria-label="Filtrar por modelo"
+        value={modelFilter}
+        onChange={(e) => onMessageModelFilterChange(e.target.value)}
+      >
+        <option value="">Todos los modelos</option>
+        {models.map((m) => (
+          <option key={`${m.provider}:${m.model_id}`} value={m.model_id}>
+            {m.model_id} · {m.count}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function MessageListRow({ item, active }) {
+  const when = formatDateTime(item.created_at);
+  const photos = item.photo_count || 0;
+  const meta = `${item.title || "(sin título)"} · ${when}`;
+  return (
+    <div
+      className={`conversation-item message-list-item${active ? " active" : ""}`}
+      data-id={item.id}
+      data-conversation-id={item.conversation_id}
+      title={meta}
+      onClick={() => openIsolatedMessage(item.conversation_id, item.id)}
+    >
+      <div className="conv-row">
+        <span className="conv-title">{item.title || "(sin título)"}</span>
+      </div>
+      <div className="message-list-meta">
+        <time className="message-history-created" dateTime={item.created_at || ""}>
+          {when}
+        </time>
+        <span className="message-list-stats">
+          {item.length} car. · {photos} foto{photos === 1 ? "" : "s"}
+          {item.model_id ? ` · ${item.model_id}` : ""}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** Listado de mensajes (respuestas del agente) con paginación incremental. */
+export function MessagesList() {
+  const items = useStore(historyStore, (s) => s.messageListItems);
+  const total = useStore(historyStore, (s) => s.messageListTotal);
+  const isEmptyQuery = useStore(historyStore, (s) => !!String(s.messageListQuery || "").trim());
+  const viewOnlyId = useStore(sessionStore, (s) => s.messageViewOnlyMessageId);
+  const focusId = useStore(sessionStore, (s) => s.focusMessageId || s.consultaAssistantId);
+  const activeId = viewOnlyId || focusId;
+
+  return (
+    <>
+      <div className="conversations-list" id="messages-list">
+        {!items.length ? (
+          <p className="conv-group-label">{isEmptyQuery ? "Sin resultados." : "No hay mensajes todavía."}</p>
+        ) : null}
+        {items.map((m) => (
+          <MessageListRow key={m.id} item={m} active={m.id === activeId} />
+        ))}
+      </div>
+      {items.length < total ? (
+        <div className="message-history-pager" id="message-list-pager">
+          <span className="message-history-page-meta">
+            {items.length} / {total}
+          </span>
+          <button
+            type="button"
+            className="btn btn-secondary btn-small message-history-load-more"
+            onClick={() => loadMessageList({ append: true })}
+          >
+            Cargar más
+          </button>
+        </div>
+      ) : null}
+    </>
+  );
 }
 
 function MessageTreeNodeRow({ node, depth, visibleIds, selectedIds }) {
@@ -170,7 +367,8 @@ function HistoryContextMenu() {
   );
 }
 
-export function ConversationsList() {
+/** Árbol de conversaciones/respuestas agrupado por fecha, con papelera. */
+export function ConversationsTreeList() {
   const roots = useStore(historyStore, (s) => s.treeRoots);
   const total = useStore(historyStore, (s) => s.treeRootsTotal);
   const deleted = useStore(historyStore, (s) => s.deletedConversations);
@@ -262,11 +460,56 @@ export function ConversationsList() {
   );
 }
 
-export function HistorySortSelect() {
-  return null;
+/** Selector de orden del árbol de conversaciones. */
+function ConversationSortSelect() {
+  const sort = useStore(historyStore, (s) => s.conversationSort);
+  return (
+    <div className="conversation-sort-wrap">
+      <select
+        id="conversation-sort-select"
+        className="left-history-sort-select"
+        aria-label="Ordenar conversaciones"
+        value={sort}
+        onChange={(e) => onLeftHistorySortChange(e.target.value)}
+      >
+        {CONV_SORT_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
 }
 
-export { setLeftHistoryMode, newConversation, newPromptGeneratorConversation, onMessageHistorySearchInput, setLeftCollapsed, onLeftHistorySortChange };
+/** Panel izquierdo de historial: conmutador + listado de mensajes o árbol de conversaciones. */
+export function ConversationsList() {
+  const mode = useStore(historyStore, (s) => s.mode);
+  const isMessages = mode !== LEFT_HISTORY_MODE_CONVERSATIONS;
+  return (
+    <>
+      <HistoryModeSwitch />
+      {isMessages ? (
+        <>
+          <MessageListControls />
+          <MessagesList />
+        </>
+      ) : (
+        <>
+          <ConversationSortSelect />
+          <ConversationsTreeList />
+        </>
+      )}
+    </>
+  );
+}
 
-// compat: modo mensajes ya no se usa como vista
-void isMessagesHistoryMode;
+export {
+  setLeftHistoryMode,
+  newConversation,
+  newPromptGeneratorConversation,
+  onMessageHistorySearchInput,
+  onMessageSortDirectionToggle,
+  setLeftCollapsed,
+  onLeftHistorySortChange,
+};

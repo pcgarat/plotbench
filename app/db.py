@@ -254,3 +254,46 @@ def init_db():
             conn.commit()
         except Exception:
             conn.rollback()
+    # Título de mensaje (primera frase alfanumérica): columna + backfill único.
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE messages ADD COLUMN title VARCHAR(80)"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        try:
+            from app.services.message_title import derive_message_title
+
+            pending = conn.execute(
+                text("SELECT id, content FROM messages WHERE title IS NULL")
+            ).fetchall()
+            for mid, content in pending:
+                conn.execute(
+                    text("UPDATE messages SET title = :t WHERE id = :mid"),
+                    {"t": derive_message_title(content), "mid": mid},
+                )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+    # Backfill: los títulos antiguos se guardaron sin espacios ("Holamundo"); se recalculan
+    # los que no tienen espacios pero cuyo contenido sí, y solo mientras queden filas así.
+    with engine.connect() as conn:
+        try:
+            from app.services.message_title import derive_message_title
+
+            pending = conn.execute(
+                text(
+                    "SELECT id, content, title FROM messages "
+                    "WHERE title IS NULL OR (instr(title, ' ') = 0 AND instr(content, ' ') > 0)"
+                )
+            ).fetchall()
+            for mid, content, stored in pending:
+                expected = derive_message_title(content)
+                if (stored or "") != expected:
+                    conn.execute(
+                        text("UPDATE messages SET title = :t WHERE id = :mid"),
+                        {"t": expected, "mid": mid},
+                    )
+            conn.commit()
+        except Exception:
+            conn.rollback()

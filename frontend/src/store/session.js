@@ -14,6 +14,10 @@ export const sessionStore = createStore({
   focusMessageId: null,
   /** Primer índice visible del camino activo; anteriores se revelan al hacer scroll arriba. */
   viewStartIndex: 0,
+  /** Vista de mensaje aislado: solo el mensaje seleccionado (composer sigue disponible). */
+  messageViewOnly: false,
+  messageViewOnlyMessageId: null,
+  messageViewOnlyConversationId: null,
   consultaAssistantId: null,
   rules: [],
   plannerRules: [],
@@ -57,6 +61,9 @@ export function resetSession() {
     activeLeafId: null,
     focusMessageId: null,
     viewStartIndex: 0,
+    messageViewOnly: false,
+    messageViewOnlyMessageId: null,
+    messageViewOnlyConversationId: null,
     consultaAssistantId: null,
     rules: [],
     composerDraft: "",

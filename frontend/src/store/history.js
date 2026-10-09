@@ -3,16 +3,47 @@ import { createStore } from "./createStore.js";
 export const LEFT_HISTORY_MODE_KEY = "leftHistoryMode";
 export const LEFT_HISTORY_SORT_CONVERSATIONS_KEY = "leftHistorySortConversations";
 export const LEFT_HISTORY_SORT_MESSAGES_KEY = "leftHistorySortMessages";
+export const LEFT_HISTORY_SORT_DIRECTION_KEY = "leftHistorySortDirection";
+export const LEFT_HISTORY_SEARCH_IN_KEY = "leftHistorySearchIn";
+
+/** Vistas del panel izquierdo: listado de mensajes (por defecto) o de conversaciones. */
+export const LEFT_HISTORY_MODE_MESSAGES = "messages";
+export const LEFT_HISTORY_MODE_CONVERSATIONS = "conversations";
 
 export const CONV_SORT_OPTIONS = [
   { value: "activity", label: "Actividad" },
   { value: "created_at", label: "Creación" },
 ];
 
-export const MSG_SORT_OPTIONS = [
-  { value: "message", label: "Mensaje" },
-  { value: "image", label: "Imagen" },
+// Orden del listado de mensajes.
+export const MESSAGE_SORT_OPTIONS = [
+  { value: "date", label: "Fecha" },
+  { value: "title", label: "Título" },
+  { value: "length", label: "Extensión" },
+  { value: "photos", label: "Nº de fotos" },
 ];
+
+// Ámbito de la búsqueda de mensajes.
+export const MESSAGE_SEARCH_IN_OPTIONS = [
+  { value: "title", label: "Solo título" },
+  { value: "both", label: "Título y cuerpo" },
+];
+
+// Dirección del orden del listado de mensajes.
+export const MESSAGE_SORT_DIRECTION_ASC = "asc";
+export const MESSAGE_SORT_DIRECTION_DESC = "desc";
+export const MESSAGE_SORT_DIRECTION_VALUES = [
+  MESSAGE_SORT_DIRECTION_ASC,
+  MESSAGE_SORT_DIRECTION_DESC,
+];
+
+// Dirección por defecto de cada criterio (título A→Z; el resto, mayor/reciente primero).
+export const MESSAGE_SORT_DEFAULT_DIRECTION = {
+  date: MESSAGE_SORT_DIRECTION_DESC,
+  title: MESSAGE_SORT_DIRECTION_ASC,
+  length: MESSAGE_SORT_DIRECTION_DESC,
+  photos: MESSAGE_SORT_DIRECTION_DESC,
+};
 
 export const CONV_GROUP_LABELS = { hoy: "Hoy", ayer: "Ayer", semana: "Semana", anteriores: "Antes" };
 
@@ -20,23 +51,25 @@ export const MESSAGE_HISTORY_PAGE_SIZE = 50;
 export const MESSAGE_TREE_ROOT_PAGE_SIZE = 50;
 export const MESSAGE_HISTORY_SEARCH_DEBOUNCE_MS = 280;
 
+const MESSAGE_SORT_VALUES = MESSAGE_SORT_OPTIONS.map((o) => o.value);
+const MESSAGE_SEARCH_IN_VALUES = MESSAGE_SEARCH_IN_OPTIONS.map((o) => o.value);
+
+/** Dirección por defecto del criterio (título A→Z; el resto, mayor/reciente primero). */
+export function defaultMessageSortDirection(sort) {
+  return MESSAGE_SORT_DEFAULT_DIRECTION[sort] || MESSAGE_SORT_DIRECTION_DESC;
+}
+
 function normalizeMode(raw) {
-  if (raw === "tree" || raw === "messages" || raw === "conversations") return "tree";
-  return "tree";
+  return raw === LEFT_HISTORY_MODE_CONVERSATIONS
+    ? LEFT_HISTORY_MODE_CONVERSATIONS
+    : LEFT_HISTORY_MODE_MESSAGES;
 }
 
 function readMode() {
   try {
-    const stored = localStorage.getItem(LEFT_HISTORY_MODE_KEY);
-    const mode = normalizeMode(stored);
-    if (stored !== "tree") {
-      try {
-        localStorage.setItem(LEFT_HISTORY_MODE_KEY, "tree");
-      } catch (_) {}
-    }
-    return mode;
+    return normalizeMode(localStorage.getItem(LEFT_HISTORY_MODE_KEY));
   } catch (_) {
-    return "tree";
+    return LEFT_HISTORY_MODE_MESSAGES;
   }
 }
 
@@ -52,9 +85,28 @@ function readConversationSort() {
 
 function readMessageSort() {
   try {
-    return localStorage.getItem(LEFT_HISTORY_SORT_MESSAGES_KEY) === "image" ? "image" : "message";
+    const stored = localStorage.getItem(LEFT_HISTORY_SORT_MESSAGES_KEY);
+    return MESSAGE_SORT_VALUES.includes(stored) ? stored : "date";
   } catch (_) {
-    return "message";
+    return "date";
+  }
+}
+
+function readMessageSearchIn() {
+  try {
+    const stored = localStorage.getItem(LEFT_HISTORY_SEARCH_IN_KEY);
+    return MESSAGE_SEARCH_IN_VALUES.includes(stored) ? stored : "title";
+  } catch (_) {
+    return "title";
+  }
+}
+
+function readStoredMessageSortDirectionRaw() {
+  try {
+    const stored = localStorage.getItem(LEFT_HISTORY_SORT_DIRECTION_KEY);
+    return MESSAGE_SORT_DIRECTION_VALUES.includes(stored) ? stored : null;
+  } catch (_) {
+    return null;
   }
 }
 
@@ -75,9 +127,40 @@ export function readStoredMessageSort() {
   return readMessageSort();
 }
 
+/** Dirección explícita guardada, o null si el usuario nunca la cambió (aún aplica el default del criterio). */
+export function readStoredMessageSortDirection() {
+  return readStoredMessageSortDirectionRaw();
+}
+
 export function persistMessageSort(sort) {
   try {
-    localStorage.setItem(LEFT_HISTORY_SORT_MESSAGES_KEY, sort === "image" ? "image" : "message");
+    localStorage.setItem(
+      LEFT_HISTORY_SORT_MESSAGES_KEY,
+      MESSAGE_SORT_VALUES.includes(sort) ? sort : "date"
+    );
+  } catch (_) {}
+}
+
+export function persistMessageSortDirection(direction) {
+  try {
+    const normalized =
+      direction === MESSAGE_SORT_DIRECTION_ASC
+        ? MESSAGE_SORT_DIRECTION_ASC
+        : MESSAGE_SORT_DIRECTION_DESC;
+    localStorage.setItem(LEFT_HISTORY_SORT_DIRECTION_KEY, normalized);
+  } catch (_) {}
+}
+
+export function readStoredMessageSearchIn() {
+  return readMessageSearchIn();
+}
+
+export function persistMessageSearchIn(scope) {
+  try {
+    localStorage.setItem(
+      LEFT_HISTORY_SEARCH_IN_KEY,
+      MESSAGE_SEARCH_IN_VALUES.includes(scope) ? scope : "title"
+    );
   } catch (_) {}
 }
 
@@ -90,13 +173,18 @@ export function persistLeftHistoryMode(mode) {
 export const historyStore = createStore({
   mode: readMode(),
   conversationSort: readConversationSort(),
+  // Listado de mensajes (vista por defecto).
   messageSort: readMessageSort(),
+  messageSortDirection: readStoredMessageSortDirectionRaw(),
+  messageSearchIn: readMessageSearchIn(),
+  messageListItems: [],
+  messageListTotal: 0,
+  messageListQuery: "",
+  messageModelFilter: "",
+  messageModels: [],
+  // Conversaciones (árbol de respuestas).
   conversations: [],
   deletedConversations: [],
-  messageHistoryItems: [],
-  messageHistoryTotal: 0,
-  messageHistoryQuery: "",
-  messageHistorySearchIn: null,
   treeRoots: [],
   treeRootsTotal: 0,
   treeChildrenByParent: {},
@@ -108,11 +196,16 @@ export const historyStore = createStore({
 });
 
 export function isMessagesHistoryMode(state = historyStore.get()) {
-  return state.mode === "messages";
+  return normalizeMode(state.mode) === LEFT_HISTORY_MODE_MESSAGES;
 }
 
+export function isConversationsHistoryMode(state = historyStore.get()) {
+  return normalizeMode(state.mode) === LEFT_HISTORY_MODE_CONVERSATIONS;
+}
+
+/** Compat: el modo conversaciones es el árbol de respuestas. */
 export function isTreeHistoryMode(state = historyStore.get()) {
-  return state.mode === "tree" || state.mode !== "messages";
+  return isConversationsHistoryMode(state);
 }
 
 export function currentLeftHistorySort(state = historyStore.get()) {

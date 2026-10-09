@@ -123,10 +123,8 @@ export function StoreDomSync() {
   }, [draft, instruction, kind, abort]);
 
   useEffect(() => {
-    const wrap = document.getElementById("message-history-search-wrap");
-    if (wrap) wrap.hidden = true;
-    const sortWrap = document.getElementById("left-history-sort");
-    if (sortWrap) sortWrap.hidden = true;
+    // Conmutar de vista recarga el listado activo desde el store (sin tocar el DOM).
+    void mode;
   }, [mode]);
 
   useEffect(() => {

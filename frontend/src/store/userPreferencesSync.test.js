@@ -9,7 +9,20 @@ import {
 } from "./userPreferencesSync.js";
 import { layoutStore, updateLayout } from "./layout.js";
 import { imagesStore, persistImagesPrefs, IMAGES_PREFS_KEY } from "./images.js";
-import { historyStore, persistConversationSort } from "./history.js";
+import {
+  historyStore,
+  persistConversationSort,
+  persistMessageSort,
+  persistMessageSortDirection,
+  persistMessageSearchIn,
+  persistLeftHistoryMode,
+  LEFT_HISTORY_MODE_CONVERSATIONS,
+  LEFT_HISTORY_MODE_KEY,
+  LEFT_HISTORY_SORT_CONVERSATIONS_KEY,
+  LEFT_HISTORY_SORT_MESSAGES_KEY,
+  LEFT_HISTORY_SORT_DIRECTION_KEY,
+  LEFT_HISTORY_SEARCH_IN_KEY,
+} from "./history.js";
 import { saveLastConversationId, LAST_CONVERSATION_STORAGE_KEY } from "./session.js";
 import { settingsStore, persistSettingsPrefs } from "./settings.js";
 import * as auth from "./auth.js";
@@ -36,7 +49,12 @@ describe("userPreferencesSync", () => {
       autoScrollDuringGeneration: true,
     });
     imagesStore.set({ prefs: {} });
-    historyStore.set({ conversationSort: "activity", messageSort: "message", mode: "tree" });
+    historyStore.set({
+      conversationSort: "activity",
+      messageSort: "date",
+      messageSortDirection: "desc",
+      mode: "messages",
+    });
     settingsStore.set({
       currentProvider: "ollama",
       currentModel: "",
@@ -75,6 +93,66 @@ describe("userPreferencesSync", () => {
     expect(JSON.parse(localStorage.getItem(IMAGES_PREFS_KEY)).prompt).toBe("faro");
     expect(historyStore.get().conversationSort).toBe("created_at");
     expect(localStorage.getItem(LAST_CONVERSATION_STORAGE_KEY)).toBe("conv-42");
+  });
+
+  it("collect → apply roundtrip conserva modo, orden y ámbito de mensajes", () => {
+    persistMessageSort("photos");
+    persistMessageSortDirection("asc");
+    persistMessageSearchIn("both");
+    persistLeftHistoryMode(LEFT_HISTORY_MODE_CONVERSATIONS);
+    historyStore.set({
+      mode: LEFT_HISTORY_MODE_CONVERSATIONS,
+      messageSort: "photos",
+      messageSortDirection: "asc",
+      messageSearchIn: "both",
+    });
+
+    const snap = collectPreferencesSnapshot();
+    expect(snap.history.mode).toBe(LEFT_HISTORY_MODE_CONVERSATIONS);
+    expect(snap.history.messageSort).toBe("photos");
+    expect(snap.history.messageSortDirection).toBe("asc");
+    expect(snap.history.messageSearchIn).toBe("both");
+
+    // Estado divergente antes de aplicar: el snapshot debe imponerse.
+    persistMessageSort("date");
+    persistMessageSortDirection("desc");
+    persistMessageSearchIn("title");
+    persistLeftHistoryMode("messages");
+    historyStore.set({
+      mode: "messages",
+      messageSort: "date",
+      messageSortDirection: "desc",
+      messageSearchIn: "title",
+    });
+
+    applyPreferencesSnapshot(snap);
+    expect(historyStore.get().mode).toBe(LEFT_HISTORY_MODE_CONVERSATIONS);
+    expect(historyStore.get().messageSort).toBe("photos");
+    expect(historyStore.get().messageSortDirection).toBe("asc");
+    expect(historyStore.get().messageSearchIn).toBe("both");
+    expect(localStorage.getItem(LEFT_HISTORY_MODE_KEY)).toBe(LEFT_HISTORY_MODE_CONVERSATIONS);
+    expect(localStorage.getItem(LEFT_HISTORY_SORT_MESSAGES_KEY)).toBe("photos");
+    expect(localStorage.getItem(LEFT_HISTORY_SORT_DIRECTION_KEY)).toBe("asc");
+    expect(localStorage.getItem(LEFT_HISTORY_SEARCH_IN_KEY)).toBe("both");
+  });
+
+  it("apply normaliza valores de historial desconocidos del servidor", () => {
+    applyPreferencesSnapshot({
+      version: 1,
+      history: {
+        mode: "raro",
+        messageSort: "nope",
+        messageSortDirection: "nope",
+        conversationSort: "raro",
+        messageSearchIn: "nope",
+      },
+    });
+    expect(historyStore.get().mode).toBe("messages");
+    expect(historyStore.get().messageSort).toBe("date");
+    expect(historyStore.get().messageSortDirection).toBe("desc");
+    expect(historyStore.get().conversationSort).toBe("activity");
+    expect(historyStore.get().messageSearchIn).toBe("title");
+    expect(localStorage.getItem(LEFT_HISTORY_SORT_CONVERSATIONS_KEY)).toBe("activity");
   });
 
   it("hydrate sin prefs en servidor siembra el snapshot local", async () => {

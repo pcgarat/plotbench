@@ -29,6 +29,9 @@ from app.schemas import (
     MessageHistoryItem,
     MessageHistoryListResponse,
     MessageInChat,
+    MessageListItem,
+    MessageListResponse,
+    MessageModelOption,
     MessageResponse,
     MessageSend,
     PurgeDeletedConversationsResponse,
@@ -333,6 +336,72 @@ def list_messages(
         offset=page.offset,
         search_in=page.search_in,
     )
+
+
+@router.get("/messages/list", response_model=MessageListResponse)
+def list_message_list(
+    user: CurrentUser,
+    limit: int = Query(
+        default=crud.MESSAGE_HISTORY_LIMIT_DEFAULT,
+        ge=1,
+        le=crud.MESSAGE_HISTORY_LIMIT_MAX,
+    ),
+    offset: int = Query(default=0, ge=0),
+    sort: Literal["date", "title", "length", "photos"] = Query(default="date"),
+    direction: Literal["asc", "desc"] | None = Query(default=None),
+    q: str | None = Query(default=None),
+    search_in: Literal["title", "both"] | None = Query(default=None),
+    model_id: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """Mensajes (respuestas assistant) con título, fecha, filtros y orden del panel izquierdo."""
+    page = crud.list_messages(
+        db,
+        limit=limit,
+        offset=offset,
+        sort=sort,
+        direction=direction,
+        q=q,
+        search_in=search_in,
+        model_id=model_id,
+        user_id=user.id,
+        include_unowned=bool(user.is_admin),
+    )
+    return MessageListResponse(
+        items=[
+            MessageListItem(
+                id=row.message.id,
+                conversation_id=row.conversation.id,
+                conversation_title=row.conversation.title or "",
+                parent_id=row.message.parent_id,
+                content=row.message.content,
+                title=row.title,
+                length=row.length,
+                photo_count=row.photo_count,
+                created_at=row.message.created_at,
+                latest_image_at=row.latest_photo_at,
+                model_id=row.conversation.model_id or "",
+                provider=row.conversation.provider or "ollama",
+            )
+            for row in page.rows
+        ],
+        total=page.total,
+        limit=page.limit,
+        offset=page.offset,
+        search_in=page.search_in,
+        models=[MessageModelOption(**m) for m in page.models],
+    )
+
+
+@router.get("/messages/models", response_model=list[MessageModelOption])
+def list_message_models(user: CurrentUser, db: Session = Depends(get_db)):
+    """Modelos que han generado al menos un mensaje (opciones del filtro por modelo)."""
+    return [
+        MessageModelOption(**m)
+        for m in crud.list_generating_models(
+            db, user_id=user.id, include_unowned=bool(user.is_admin)
+        )
+    ]
 
 
 @router.get("/conversations/deleted", response_model=list[ConversationListItem])

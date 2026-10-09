@@ -45,6 +45,54 @@ def test_message_tree_api_client_and_actions_exist():
     assert "refreshMessageTreePreservingExpansion" in actions
 
 
+def test_left_panel_exposes_messages_and_conversations_modes():
+    lists = frontend_file("ui/history/HistoryLists.jsx")
+    assert "btn-history-mode-messages" in lists
+    assert "btn-history-mode-conversations" in lists
+    assert "openIsolatedMessage" in lists
+    assert "message-list-item" in lists
+
+
+def test_messages_list_controls_and_pager():
+    lists = frontend_file("ui/history/HistoryLists.jsx")
+    assert 'id="message-history-search"' in lists
+    assert 'id="message-search-in"' in lists
+    assert 'id="left-history-sort-select"' in lists
+    assert 'id="message-sort-direction"' in lists
+    assert 'id="message-model-filter"' in lists
+    assert "loadMessageList({ append: true })" in lists
+    assert "Cargar más" in lists
+
+
+def test_opening_isolated_message_shows_only_that_message():
+    session = frontend_file("app/sessionActions.js")
+    assert "export async function openIsolatedMessage" in session
+    open_fn = session.split("export async function openIsolatedMessage")[1].split(
+        "export async function openConversationAtIllustration"
+    )[0]
+    assert "messageViewOnly: true" in open_fn
+    assert "messageViewOnlyMessageId: messageId" in open_fn
+
+
+def test_continued_chat_leaves_isolated_view():
+    session = frontend_file("app/sessionActions.js")
+    send = frontend_file("app/sendMessage.js")
+    assert "export function clearIsolatedMessageView" in session
+    assert "clearIsolatedMessageView()" in session
+    apply_fn = send.split("function applyTreeToStore")[1].split("export function setComposerPrimaryActionState")[0]
+    assert "messageViewOnly: false" in apply_fn
+
+
+def test_messages_list_actions_cover_search_scope_and_model_filter():
+    actions = frontend_file("app/historyActions.js")
+    assert "export async function loadMessageList" in actions
+    assert "export function onMessageSearchInChange" in actions
+    assert "export function onMessageModelFilterChange" in actions
+    api = frontend_file("api/conversations.js")
+    assert "/messages/list" in api
+    assert "/messages/models" in api
+
+
 def test_flat_messages_toggle_removed_from_sidebar():
     app = APP_JSX.read_text(encoding="utf-8")
     left = app[app.index('id="column-left"') : app.index("</aside>")]
@@ -76,9 +124,11 @@ def test_opening_tree_node_keeps_composer_path():
     assert "latestLeafInSubtree" in session
 
 
-def test_refresh_left_history_loads_tree():
+def test_refresh_left_history_respects_active_mode():
     actions = frontend_file("app/historyActions.js")
     refresh = actions.split("export async function refreshLeftHistory")[1].split(
         "export async function setLeftHistoryMode"
     )[0]
-    assert "loadMessageTreeRoots" in refresh
+    assert "isMessagesHistoryMode" in refresh
+    assert "loadMessageList" in refresh
+    assert "refreshMessageTreePreservingExpansion" in refresh

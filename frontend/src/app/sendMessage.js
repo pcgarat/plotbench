@@ -13,14 +13,20 @@ import { maybeIllustrateAssistantMessage } from "./illustrate.js";
 import { getChatRulesTextForSystem } from "./rulesActions.js";
 
 function applyTreeToStore(allMessages, activeLeafId, extra = {}) {
-  const ephemerals = (sessionStore.get().messages || []).filter((m) => m.ephemeral_debug);
+  const state = sessionStore.get();
+  // Al continuar la conversación (nuevo turno) se abandona la vista de mensaje aislado.
+  const leaveIsolated = extra.keepIsolated !== true;
+  const ephemerals = (state.messages || []).filter((m) => m.ephemeral_debug);
   const messages = visibleMessages(allMessages, activeLeafId, extra.keepEphemeral === false ? [] : ephemerals);
-  const viewStartIndex = clampViewStartIndex(messages, sessionStore.get().viewStartIndex);
+  const viewStartIndex = clampViewStartIndex(messages, state.viewStartIndex);
   sessionStore.set({
     allMessages,
     activeLeafId,
     messages,
     viewStartIndex,
+    ...(leaveIsolated
+      ? { messageViewOnly: false, messageViewOnlyMessageId: null, messageViewOnlyConversationId: null }
+      : {}),
     ...extra,
   });
 }

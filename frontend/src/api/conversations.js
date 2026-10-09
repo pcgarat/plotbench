@@ -80,6 +80,21 @@ export function listMessages(params) {
   return fetchJson(`${API}/messages?${search.toString()}`);
 }
 
+export function listMessagesList(params) {
+  const search = params instanceof URLSearchParams ? params : new URLSearchParams();
+  if (!(params instanceof URLSearchParams)) {
+    Object.entries(params || {}).forEach(([k, v]) => {
+      if (v == null || v === "") return;
+      search.set(k, String(v));
+    });
+  }
+  return fetchJson(`${API}/messages/list?${search.toString()}`);
+}
+
+export function listMessageModels() {
+  return fetchJson(`${API}/messages/models`);
+}
+
 export async function deleteMessage(conversationId, messageId) {
   const res = await fetch(
     `${API}/conversations/${conversationId}/messages/${messageId}`,
