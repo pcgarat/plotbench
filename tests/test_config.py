@@ -43,6 +43,8 @@ def test_env_vars_to_sync_contains_expected():
         "OLLAMA_HOST",
         "MANCER_API_KEY",
         "ABLIT_KEY",
+        "NAN_API_KEY",
+        "NAN_BASE_URL",
         "PYTHON_VERSION",
         "FORGE_BASE_URL",
         "FORGE_DATA_PATH",

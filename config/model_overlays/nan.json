@@ -1,0 +1,191 @@
+{
+  "deepseek-v4-flash": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "boolean",
+        "can_disable": false,
+        "true_maps_to": "medium",
+        "default": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": { "default": 16384, "max": 131072 },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": ["low", "medium", "high", "max"],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      { "id": "hard", "label": "Máximo", "params": { "think": "max" } }
+    ],
+    "quirks": []
+  },
+  "glm5.3": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": false,
+      "thinking": {
+        "kind": "levels",
+        "values": ["low", "medium", "high", "max"],
+        "can_disable": false,
+        "true_maps_to": "high",
+        "default": "high"
+      }
+    },
+    "params": {
+      "max_tokens": { "default": 8192, "max": 131072 },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": ["low", "medium", "high", "max"],
+        "default": "high"
+      }
+    },
+    "recipes": [
+      { "id": "fast", "label": "Rápido", "params": { "think": "low" } },
+      { "id": "coding", "label": "Coding", "params": { "think": "high" } },
+      { "id": "hard", "label": "Máximo", "params": { "think": "max" } }
+    ],
+    "quirks": []
+  },
+  "glm5.3-flash": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": false,
+      "thinking": {
+        "kind": "levels",
+        "values": ["low", "medium", "high", "max"],
+        "can_disable": false,
+        "true_maps_to": "high",
+        "default": "high"
+      }
+    },
+    "params": {
+      "max_tokens": { "default": 8192, "max": 131072 },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": ["low", "medium", "high", "max"],
+        "default": "high"
+      }
+    },
+    "recipes": [
+      { "id": "fast", "label": "Rápido", "params": { "think": "low" } },
+      { "id": "coding", "label": "Coding", "params": { "think": "high" } },
+      { "id": "hard", "label": "Máximo", "params": { "think": "max" } }
+    ],
+    "quirks": []
+  },
+  "qwen3.8-flash": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": false,
+      "thinking": {
+        "kind": "boolean",
+        "can_disable": false,
+        "true_maps_to": "medium",
+        "default": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": { "default": 8192, "max": 131072 },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": ["low", "medium", "high", "max"],
+        "default": "medium"
+      }
+    },
+    "recipes": [],
+    "quirks": []
+  },
+  "mimo-v2.6-flash": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": false,
+      "thinking": {
+        "kind": "boolean",
+        "can_disable": false,
+        "true_maps_to": "medium",
+        "default": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": { "default": 8192, "min": 300, "max": 131072 },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": ["low", "medium", "high", "max"],
+        "default": "medium"
+      }
+    },
+    "recipes": [],
+    "quirks": []
+  },
+  "gemma4": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": ["none", "minimal", "low", "medium", "high", "max"],
+        "can_disable": true,
+        "true_maps_to": "medium",
+        "default": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": { "default": 8192, "max": 131072 },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": ["none", "minimal", "low", "medium", "high", "max"],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      { "id": "fast", "label": "Rápido", "params": { "think": "none" } },
+      { "id": "hard", "label": "Máximo", "params": { "think": "max" } }
+    ],
+    "quirks": []
+  },
+  "qwen3.6": {
+    "capabilities": {
+      "vision": true,
+      "tools": true,
+      "structured_output": true,
+      "thinking": {
+        "kind": "levels",
+        "values": ["none", "minimal", "low", "medium", "high", "max"],
+        "can_disable": true,
+        "true_maps_to": "medium",
+        "default": "medium"
+      }
+    },
+    "params": {
+      "max_tokens": { "default": 8192, "max": 131072 },
+      "think": {
+        "api_key": "reasoning_effort",
+        "type": "enum",
+        "values": ["none", "minimal", "low", "medium", "high", "max"],
+        "default": "medium"
+      }
+    },
+    "recipes": [
+      { "id": "fast", "label": "Rápido", "params": { "think": "none" } },
+      { "id": "coding", "label": "Coding", "params": { "think": "high" } },
+      { "id": "hard", "label": "Máximo", "params": { "think": "max" } }
+    ],
+    "quirks": []
+  }
+}

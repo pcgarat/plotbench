@@ -6,6 +6,7 @@ Proveedores disponibles:
 - MancerProvider: Modelos cloud via Mancer.tech (API compatible OpenAI)
 - OpenAIProvider: Modelos vía API oficial OpenAI
 - AbliterationProvider: Modelos uncensored vía abliteration.ai (API compatible OpenAI)
+- NanProvider: Modelos community de NaN Builders (API compatible OpenAI)
 """
 
 from app.providers.base import LLMProvider, ProviderModelInfo

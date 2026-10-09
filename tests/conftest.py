@@ -169,3 +169,17 @@ def abliteration_available():
             "Configura la variable de entorno para ejecutar tests e2e de Abliteration."
         )
     return True
+
+
+@pytest.fixture(scope="session")
+def nan_available():
+    """
+    Comprueba si NaN Builders está configurado (NAN_API_KEY) para tests e2e.
+    Si no hay key, hace skip de los tests que dependan de esta fixture.
+    """
+    if not getattr(settings, "nan_api_key", ""):
+        pytest.skip(
+            "NAN_API_KEY no configurada. "
+            "Configura la variable de entorno para ejecutar tests e2e de NaN Builders."
+        )
+    return True

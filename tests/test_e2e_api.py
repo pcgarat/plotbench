@@ -690,6 +690,73 @@ def test_e2e_abliteration_context_length(client, abliteration_available):
     assert data["context_length"] == 262144
 
 
+# ----- API NaN Builders (e2e cuando NAN_API_KEY está configurada) -----
+
+
+def _get_first_nan_model(client):
+    """Obtiene el primer modelo NaN; hace skip si la lista está vacía."""
+    r = client.get("/api/providers/nan/models")
+    assert r.status_code == 200
+    models = r.json()
+    if not models:
+        pytest.skip("NaN no devolvió ningún modelo. Comprueba NAN_API_KEY y la API.")
+    return models[0]["name"]
+
+
+def test_e2e_list_providers_includes_nan_when_key_set(client, nan_available):
+    """GET /api/providers incluye nan cuando NAN_API_KEY está configurada."""
+    r = client.get("/api/providers")
+    assert r.status_code == 200
+    names = [p["name"] for p in r.json()]
+    assert "nan" in names
+
+
+def test_e2e_nan_models(client, nan_available):
+    """GET /api/providers/nan/models devuelve modelos con provider nan."""
+    r = client.get("/api/providers/nan/models")
+    assert r.status_code == 200
+    models = r.json()
+    assert isinstance(models, list)
+    assert models, "NaN no devolvió modelos"
+    for m in models:
+        assert m.get("provider") == "nan"
+
+
+def test_e2e_nan_validate(client, nan_available):
+    """GET /api/providers/nan/validate devuelve 200 y ok."""
+    r = client.get("/api/providers/nan/validate")
+    assert r.status_code == 200
+    data = r.json()
+    assert data.get("ok") is True
+
+
+def test_e2e_nan_params(client, nan_available):
+    """GET /api/providers/nan/params devuelve provider y params."""
+    r = client.get("/api/providers/nan/params")
+    assert r.status_code == 200
+    data = r.json()
+    assert data.get("provider") == "nan"
+    assert "temperature" in data.get("params", {})
+    assert "max_tokens" in data.get("params", {})
+
+
+def test_e2e_nan_capabilities(client, nan_available):
+    """GET /api/providers/nan/capabilities incluye show_model."""
+    r = client.get("/api/providers/nan/capabilities")
+    assert r.status_code == 200
+    data = r.json()
+    assert "show_model" in data.get("capabilities", [])
+
+
+def test_e2e_nan_context_length(client, nan_available):
+    """context-length de un modelo NaN es coherente con el preset (1M para deepseek-v4-flash)."""
+    path_id = _encode_model_id("deepseek-v4-flash")
+    r = client.get(f"/api/providers/nan/models/{path_id}/context-length")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["context_length"] == 1048576
+
+
 # ----- API Rules (biblioteca) -----
 
 

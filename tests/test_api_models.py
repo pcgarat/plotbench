@@ -218,6 +218,31 @@ def test_get_provider_presets_abliteration(client):
     assert presets["abliterated-model-large-v2"]["context_length"]["max"] == 1000000
 
 
+def test_get_provider_params_nan(client):
+    """GET /api/providers/nan/params devuelve parámetros OpenAI-compatible."""
+    r = client.get("/api/providers/nan/params")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["provider"] == "nan"
+    params = data["params"]
+    assert params["temperature"].get("api_key") == "temperature"
+    assert params["max_tokens"].get("api_key") == "max_tokens"
+    assert params["max_tokens"].get("default") == 4096
+
+
+def test_get_provider_presets_nan(client):
+    """GET /api/providers/nan/presets incluye los modelos del clúster NaN."""
+    r = client.get("/api/providers/nan/presets")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["provider"] == "nan"
+    presets = data["presets"]
+    assert "deepseek-v4-flash" in presets
+    assert "gemma4" in presets
+    assert presets["deepseek-v4-flash"]["context_length"]["max"] == 1048576
+    assert presets["gemma4"]["context_length"]["max"] == 262144
+
+
 def test_get_provider_params_unknown(client):
     """GET /api/providers/unknown/params devuelve params vacío."""
     r = client.get("/api/providers/unknown_provider_xyz/params")

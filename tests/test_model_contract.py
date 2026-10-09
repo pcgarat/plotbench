@@ -547,3 +547,41 @@ def test_omit_prior_thinking_ignora_quirks_ajenos():
     out = apply_history_quirks(original, ("image_before_text",))
     assert "<think>" in out[2]["content"]
     assert out[2]["thinking"] == "sumo 2 y 2"
+
+
+# ----- overlays proveedor NaN (reasoning_effort) -----
+
+
+def test_nan_overlay_glm_reasoning_effort_por_niveles():
+    """glm5.3-flash expone reasoning_effort (low/medium/high/max) mapeado desde think."""
+    _clear_overlay_cache("nan")
+    contract = resolve_model_contract("nan", "glm5.3-flash")
+    th = contract.capabilities.thinking
+    assert th.kind == "levels"
+    assert th.values == ("low", "medium", "high", "max")
+    assert th.can_disable is False
+    assert th.true_maps_to == "high"
+    assert contract.params["think"]["api_key"] == "reasoning_effort"
+    assert contract.params["think"]["default"] == "high"
+
+
+def test_nan_overlay_deepseek_reasoning_adaptativo_coacciona_false():
+    """deepseek-v4-flash no permite desactivar el razonamiento: false → medium."""
+    _clear_overlay_cache("nan")
+    contract = resolve_model_contract("nan", "deepseek-v4-flash")
+    th = contract.capabilities.thinking
+    assert th.can_disable is False
+    assert th.true_maps_to == "medium"
+    assert normalize_think_value(th, False) == "medium"
+    assert normalize_think_value(th, True) == "medium"
+
+
+def test_nan_overlay_gemma4_permite_desactivar_reasoning():
+    """gemma4 acepta none/minimal/... y permite desactivar el razonamiento."""
+    _clear_overlay_cache("nan")
+    contract = resolve_model_contract("nan", "gemma4")
+    th = contract.capabilities.thinking
+    assert th.can_disable is True
+    assert "none" in th.values
+    assert normalize_think_value(th, "none") == "none"
+    assert contract.params["think"]["api_key"] == "reasoning_effort"

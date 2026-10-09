@@ -1,0 +1,146 @@
+{
+  "deepseek-v4-flash": {
+    "context_length": {
+      "max": 1048576
+    },
+    "max_tokens": {
+      "api_key": "max_tokens",
+      "type": "int",
+      "default": 16384,
+      "min": 1,
+      "max": 131072
+    },
+    "tags": [
+      "Chat Completions",
+      "Function calling",
+      "Image",
+      "Reasoning",
+      "Streaming",
+      "Structured outputs",
+      "Text"
+    ]
+  },
+  "glm5.3-flash": {
+    "context_length": {
+      "max": 1048576
+    },
+    "max_tokens": {
+      "api_key": "max_tokens",
+      "type": "int",
+      "default": 8192,
+      "min": 1,
+      "max": 131072
+    },
+    "tags": [
+      "Chat Completions",
+      "Function calling",
+      "Image",
+      "Reasoning",
+      "Streaming",
+      "Text"
+    ]
+  },
+  "glm5.3": {
+    "context_length": {
+      "max": 1048576
+    },
+    "max_tokens": {
+      "api_key": "max_tokens",
+      "type": "int",
+      "default": 8192,
+      "min": 1,
+      "max": 131072
+    },
+    "tags": [
+      "Chat Completions",
+      "Function calling",
+      "Image",
+      "Reasoning",
+      "Streaming",
+      "Text",
+      "Premium"
+    ]
+  },
+  "qwen3.8-flash": {
+    "context_length": {
+      "max": 1048576
+    },
+    "max_tokens": {
+      "api_key": "max_tokens",
+      "type": "int",
+      "default": 8192,
+      "min": 1,
+      "max": 131072
+    },
+    "tags": [
+      "Chat Completions",
+      "Function calling",
+      "Image",
+      "Reasoning",
+      "Streaming",
+      "Text"
+    ]
+  },
+  "mimo-v2.6-flash": {
+    "context_length": {
+      "max": 1048576
+    },
+    "max_tokens": {
+      "api_key": "max_tokens",
+      "type": "int",
+      "default": 8192,
+      "min": 300,
+      "max": 131072
+    },
+    "tags": [
+      "Chat Completions",
+      "Function calling",
+      "Image",
+      "Reasoning",
+      "Streaming",
+      "Text"
+    ]
+  },
+  "gemma4": {
+    "context_length": {
+      "max": 262144
+    },
+    "max_tokens": {
+      "api_key": "max_tokens",
+      "type": "int",
+      "default": 8192,
+      "min": 1,
+      "max": 131072
+    },
+    "tags": [
+      "Chat Completions",
+      "Function calling",
+      "Image",
+      "Reasoning",
+      "Streaming",
+      "Structured outputs",
+      "Text"
+    ]
+  },
+  "qwen3.6": {
+    "context_length": {
+      "max": 262144
+    },
+    "max_tokens": {
+      "api_key": "max_tokens",
+      "type": "int",
+      "default": 8192,
+      "min": 1,
+      "max": 131072
+    },
+    "tags": [
+      "Chat Completions",
+      "Function calling",
+      "Image",
+      "Reasoning",
+      "Streaming",
+      "Structured outputs",
+      "Text"
+    ]
+  }
+}
