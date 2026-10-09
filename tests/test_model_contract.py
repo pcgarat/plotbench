@@ -623,3 +623,29 @@ def test_nan_overlay_recetas_recortan_o_ajustan_esfuerzo():
     by_id = {r.id: r for r in contract.recipes}
     assert by_id["fast"].params["think"] == "low"
     assert by_id["hard"].params["think"] == "max"
+
+
+def test_nan_overlay_recetas_creatividad_y_adherencia():
+    """Todo modelo de chat expone una receta Creativo (sampling alto) y otra Fiel (bajo).
+
+    NaN acepta temperature/top_p/presence_penalty/frequency_penalty (verificado en
+    vivo). Creativo sube temperatura y top_p y añade presencia para no repetir;
+    Fiel baja ambos y añade frecuencia para ceñirse al prompt. Los modelos con
+    levels ajustan think para no moralizar/divagar: none/minimal al crear, max al
+    ceñirse.
+    """
+    _clear_overlay_cache("nan")
+    overlay = json.loads((overlays_mod._OVERLAYS_DIR / "nan.json").read_text(encoding="utf-8"))
+    for model_id, entry in overlay.items():
+        by_id = {r["id"]: r for r in entry["recipes"]}
+        assert "creative" in by_id, model_id
+        assert "fiel" in by_id, model_id
+        creative = by_id["creative"]["params"]
+        fiel = by_id["fiel"]["params"]
+        assert creative["temperature"] >= 1.0, model_id
+        assert creative["presence_penalty"] > 0, model_id
+        assert fiel["temperature"] <= 0.3, model_id
+        assert fiel["top_p"] < 0.9, model_id
+        if "think" in entry["params"]:
+            assert creative["think"] in ("none", "minimal", "low"), model_id
+            assert fiel["think"] == "max", model_id

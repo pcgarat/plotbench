@@ -13,8 +13,8 @@
     },
     "recipes": [
       { "id": "chat", "label": "Chat", "params": { "temperature": 0.7 } },
-      { "id": "precise", "label": "Preciso", "params": { "temperature": 0.3 } },
-      { "id": "creative", "label": "Creativo", "params": { "temperature": 1.0 } }
+      { "id": "creative", "label": "Creativo", "params": { "temperature": 1.1, "top_p": 0.97, "presence_penalty": 0.6 } },
+      { "id": "fiel", "label": "Fiel", "params": { "temperature": 0.2, "top_p": 0.8, "frequency_penalty": 0.4 } }
     ],
     "quirks": []
   },
@@ -43,7 +43,9 @@
     "recipes": [
       { "id": "fast", "label": "Rápido", "params": { "think": "low" } },
       { "id": "coding", "label": "Coding", "params": { "think": "high" } },
-      { "id": "hard", "label": "Máximo", "params": { "think": "max" } }
+      { "id": "hard", "label": "Máximo", "params": { "think": "max" } },
+      { "id": "creative", "label": "Creativo", "params": { "think": "low", "temperature": 1.1, "presence_penalty": 0.6 } },
+      { "id": "fiel", "label": "Fiel", "params": { "think": "max", "temperature": 0.2, "top_p": 0.8 } }
     ],
     "quirks": []
   },
@@ -72,7 +74,9 @@
     "recipes": [
       { "id": "fast", "label": "Rápido", "params": { "think": "low" } },
       { "id": "coding", "label": "Coding", "params": { "think": "high" } },
-      { "id": "hard", "label": "Máximo", "params": { "think": "max" } }
+      { "id": "hard", "label": "Máximo", "params": { "think": "max" } },
+      { "id": "creative", "label": "Creativo", "params": { "think": "low", "temperature": 1.1, "presence_penalty": 0.6 } },
+      { "id": "fiel", "label": "Fiel", "params": { "think": "max", "temperature": 0.2, "top_p": 0.8 } }
     ],
     "quirks": []
   },
@@ -90,8 +94,8 @@
     },
     "recipes": [
       { "id": "chat", "label": "Chat", "params": { "temperature": 0.7 } },
-      { "id": "precise", "label": "Preciso", "params": { "temperature": 0.3 } },
-      { "id": "creative", "label": "Creativo", "params": { "temperature": 1.0 } }
+      { "id": "creative", "label": "Creativo", "params": { "temperature": 1.1, "top_p": 0.97, "presence_penalty": 0.6 } },
+      { "id": "fiel", "label": "Fiel", "params": { "temperature": 0.2, "top_p": 0.8, "frequency_penalty": 0.4 } }
     ],
     "quirks": []
   },
@@ -109,8 +113,8 @@
     },
     "recipes": [
       { "id": "chat", "label": "Chat", "params": { "temperature": 0.7 } },
-      { "id": "precise", "label": "Preciso", "params": { "temperature": 0.3 } },
-      { "id": "creative", "label": "Creativo", "params": { "temperature": 1.0 } }
+      { "id": "creative", "label": "Creativo", "params": { "temperature": 1.1, "top_p": 0.97, "presence_penalty": 0.6 } },
+      { "id": "fiel", "label": "Fiel", "params": { "temperature": 0.2, "top_p": 0.8, "frequency_penalty": 0.4 } }
     ],
     "quirks": []
   },
@@ -142,7 +146,9 @@
       { "id": "fast", "label": "Rápido", "params": { "think": "none", "temperature": 0.6, "top_p": 0.95 } },
       { "id": "ocr", "label": "OCR / docs", "params": { "think": "medium", "temperature": 0.6, "top_p": 0.95 } },
       { "id": "coding", "label": "Coding", "params": { "think": "high", "temperature": 0.6, "top_p": 0.95 } },
-      { "id": "hard", "label": "Máximo", "params": { "think": "max", "temperature": 0.6, "top_p": 0.95 } }
+      { "id": "hard", "label": "Máximo", "params": { "think": "max", "temperature": 0.6, "top_p": 0.95 } },
+      { "id": "creative", "label": "Creativo", "params": { "think": "none", "temperature": 1.1, "top_p": 0.97, "presence_penalty": 0.6 } },
+      { "id": "fiel", "label": "Fiel", "params": { "think": "max", "temperature": 0.2, "top_p": 0.8, "frequency_penalty": 0.4 } }
     ],
     "quirks": []
   },
@@ -174,7 +180,9 @@
       { "id": "fast", "label": "Rápido", "params": { "think": "none", "temperature": 0.6, "top_p": 0.95 } },
       { "id": "ocr", "label": "OCR / docs", "params": { "think": "medium", "temperature": 0.6, "top_p": 0.95 } },
       { "id": "coding", "label": "Coding", "params": { "think": "high", "temperature": 0.6, "top_p": 0.95 } },
-      { "id": "hard", "label": "Máximo", "params": { "think": "max", "temperature": 0.6, "top_p": 0.95 } }
+      { "id": "hard", "label": "Máximo", "params": { "think": "max", "temperature": 0.6, "top_p": 0.95 } },
+      { "id": "creative", "label": "Creativo", "params": { "think": "none", "temperature": 1.1, "top_p": 0.97, "presence_penalty": 0.6 } },
+      { "id": "fiel", "label": "Fiel", "params": { "think": "max", "temperature": 0.2, "top_p": 0.8, "frequency_penalty": 0.4 } }
     ],
     "quirks": []
   }
