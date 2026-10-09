@@ -3,48 +3,72 @@ import {
   historyStore,
   persistConversationSort,
   persistMessageSort,
+  persistMessageSortDirection,
+  persistMessageSearchIn,
   persistLeftHistoryMode,
   readStoredConversationSort,
   readStoredMessageSort,
+  readStoredMessageSortDirection,
+  readStoredMessageSearchIn,
   isMessagesHistoryMode,
+  isConversationsHistoryMode,
   isTreeHistoryMode,
   LEFT_HISTORY_MODE_KEY,
+  LEFT_HISTORY_MODE_MESSAGES,
+  LEFT_HISTORY_MODE_CONVERSATIONS,
 } from "./history.js";
 
 describe("history store", () => {
   beforeEach(() => {
     localStorage.clear();
     historyStore.set({
-      mode: "tree",
+      mode: LEFT_HISTORY_MODE_MESSAGES,
       conversationSort: "activity",
-      messageSort: "message",
+      messageSort: "date",
+      messageSortDirection: "desc",
+      messageSearchIn: "title",
       conversations: [],
       deletedConversations: [],
-      messageHistoryItems: [],
+      messageListItems: [],
       treeRoots: [],
       treeChildrenByParent: {},
       treeExpandedIds: {},
     });
   });
 
-  it("persiste orden y modo tree en localStorage", () => {
+  it("persiste orden, ámbito y modo", () => {
     persistConversationSort("created_at");
-    persistMessageSort("image");
-    persistLeftHistoryMode("tree");
+    persistMessageSort("photos");
+    persistMessageSortDirection("asc");
+    persistMessageSearchIn("both");
+    persistLeftHistoryMode(LEFT_HISTORY_MODE_CONVERSATIONS);
     expect(readStoredConversationSort()).toBe("created_at");
-    expect(readStoredMessageSort()).toBe("image");
-    expect(localStorage.getItem(LEFT_HISTORY_MODE_KEY)).toBe("tree");
+    expect(readStoredMessageSort()).toBe("photos");
+    expect(readStoredMessageSortDirection()).toBe("asc");
+    expect(readStoredMessageSearchIn()).toBe("both");
+    expect(localStorage.getItem(LEFT_HISTORY_MODE_KEY)).toBe(LEFT_HISTORY_MODE_CONVERSATIONS);
   });
 
-  it("migra modos legacy a tree al persistir", () => {
-    persistLeftHistoryMode("messages");
-    expect(localStorage.getItem(LEFT_HISTORY_MODE_KEY)).toBe("tree");
-    persistLeftHistoryMode("conversations");
-    expect(localStorage.getItem(LEFT_HISTORY_MODE_KEY)).toBe("tree");
+  it("normaliza valores desconocidos a los defaults", () => {
+    persistMessageSort("nope");
+    persistMessageSortDirection("nope");
+    persistMessageSearchIn("nope");
+    persistLeftHistoryMode("nope");
+    expect(readStoredMessageSort()).toBe("date");
+    expect(readStoredMessageSortDirection()).toBe("desc");
+    expect(readStoredMessageSearchIn()).toBe("title");
+    expect(localStorage.getItem(LEFT_HISTORY_MODE_KEY)).toBe(LEFT_HISTORY_MODE_MESSAGES);
   });
 
-  it("isTreeHistoryMode es el default", () => {
-    historyStore.set({ mode: "tree" });
+  it("el modo mensajes es el default", () => {
+    historyStore.set({ mode: LEFT_HISTORY_MODE_MESSAGES });
+    expect(isMessagesHistoryMode()).toBe(true);
+    expect(isConversationsHistoryMode()).toBe(false);
+  });
+
+  it("el modo conversaciones equivale al árbol", () => {
+    historyStore.set({ mode: LEFT_HISTORY_MODE_CONVERSATIONS });
+    expect(isConversationsHistoryMode()).toBe(true);
     expect(isTreeHistoryMode()).toBe(true);
     expect(isMessagesHistoryMode()).toBe(false);
   });

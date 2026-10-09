@@ -80,6 +80,19 @@ function setFocusMessageId(messageId) {
   syncMessageHistoryActiveItem();
 }
 
+/**
+ * Salir de la vista de mensaje aislado: al navegar el árbol, saltar desde la galería
+ * o seguir conversando dejamos de limitar la transcripción a un único mensaje.
+ */
+export function clearIsolatedMessageView() {
+  if (!sessionStore.get().messageViewOnly) return;
+  sessionStore.set({
+    messageViewOnly: false,
+    messageViewOnlyMessageId: null,
+    messageViewOnlyConversationId: null,
+  });
+}
+
 export async function setCurrentConversation(conv, options = {}) {
   const previousId = sessionStore.get().conversationId;
   if (!(options.keepFocus || options.keepConsulta)) {
@@ -113,6 +126,9 @@ export async function setCurrentConversation(conv, options = {}) {
     title: conv.title || "",
     autoTitle: Boolean(conv.auto_title),
     instructionOverride: conv.instruction_override || "",
+    messageViewOnly: false,
+    messageViewOnlyMessageId: null,
+    messageViewOnlyConversationId: null,
     rules: Array.isArray(conv.system_instructions)
       ? conv.system_instructions
       : Array.isArray(conv.rules)
@@ -367,6 +383,7 @@ function applyFocusMessageWindow(focusMessageId) {
 
 async function revealMessageInConversation(conversationId, messageId, options = {}) {
   setChatPanelVisible(true);
+  clearIsolatedMessageView();
   const current = sessionStore.get();
 
   const lookingForPhoto = !!(options.filename || options.sceneId);
@@ -510,6 +527,49 @@ export async function openMessageTreeNode(conversationId, messageId) {
   updateLayout({ composerCollapsed: false });
   document.documentElement.removeAttribute("data-history-consulta");
   return openConversationAtMessage(conversationId, messageId);
+}
+
+/**
+ * Clic en un mensaje del listado: abre la conversación mostrando SOLO ese mensaje
+ * (ni el prompt que lo generó ni el resto del hilo). El composer sigue disponible
+ * para continuar la conversación.
+ */
+export async function openIsolatedMessage(conversationId, messageId) {
+  if (!conversationId || !messageId) return;
+  historyStore.set({ treeSelectedMessageId: messageId });
+  setChatPanelVisible(true);
+  updateLayout({ composerCollapsed: false });
+  document.documentElement.removeAttribute("data-history-consulta");
+  try {
+    const conv = await conversationsApi.getConversation(conversationId);
+    setFocusMessageId(messageId);
+    await setCurrentConversation(conv, {
+      skipScroll: true,
+      keepFocus: true,
+      focusMessageId: messageId,
+      preserveView: true,
+    });
+    // La hoja activa pasa a ser el mensaje abierto: el panel pinta su camino y el
+    // composer continúa desde ahí; el filtro deja visible solo ese mensaje.
+    const tree = applyConversationTree(conv);
+    sessionStore.set({
+      allMessages: tree.allMessages,
+      activeLeafId: messageId,
+      messages: visibleMessages(tree.allMessages, messageId),
+      messageViewOnly: true,
+      messageViewOnlyMessageId: messageId,
+      messageViewOnlyConversationId: conversationId,
+      focusMessageId: messageId,
+      consultaAssistantId: messageId,
+      viewStartIndex: 0,
+      streamingText: "",
+      streamingStatus: null,
+    });
+    applyConsultaChrome();
+    syncMessageHistoryActiveItem();
+  } catch (e) {
+    showError("No se pudo abrir el mensaje: " + e.message);
+  }
 }
 
 export async function openConversationAtIllustration(conversationId, messageId, filenameOrOptions, sceneId) {

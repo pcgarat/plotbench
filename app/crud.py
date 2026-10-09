@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Conversation, IllustratedImage, ImageGenerationJob, Message, Rule
 from app.services.conversation_title import derive_auto_title
+from app.services.message_title import derive_message_title
 from app.services.image_illustration.anchors import strip_illustration_artifacts
 from app.services.conversation_tree import path_from_messages
 from app.services.rules.models import RULE_SCOPES, SCOPE_CHAT
@@ -172,6 +173,34 @@ def get_conversation(
 CONVERSATION_SORT_ACTIVITY = "activity"
 CONVERSATION_SORT_CREATED_AT = "created_at"
 CONVERSATION_SORT_VALUES = (CONVERSATION_SORT_ACTIVITY, CONVERSATION_SORT_CREATED_AT)
+
+# Orden del listado de mensajes del panel izquierdo.
+MESSAGE_SORT_DATE = "date"
+MESSAGE_SORT_TITLE = "title"
+MESSAGE_SORT_LENGTH = "length"
+MESSAGE_SORT_PHOTOS = "photos"
+MESSAGE_SORT_VALUES = (
+    MESSAGE_SORT_DATE,
+    MESSAGE_SORT_TITLE,
+    MESSAGE_SORT_LENGTH,
+    MESSAGE_SORT_PHOTOS,
+)
+MESSAGE_SEARCH_IN_VALUES = ("title", "both")
+
+# Dirección del orden del listado de mensajes.
+MESSAGE_SORT_DIRECTION_ASC = "asc"
+MESSAGE_SORT_DIRECTION_DESC = "desc"
+MESSAGE_SORT_DIRECTION_VALUES = (MESSAGE_SORT_DIRECTION_ASC, MESSAGE_SORT_DIRECTION_DESC)
+
+# Dirección por defecto de cada criterio (título A→Z; el resto, mayor/reciente primero).
+MESSAGE_SORT_DEFAULT_DIRECTION = {
+    MESSAGE_SORT_DATE: MESSAGE_SORT_DIRECTION_DESC,
+    MESSAGE_SORT_TITLE: MESSAGE_SORT_DIRECTION_ASC,
+    MESSAGE_SORT_LENGTH: MESSAGE_SORT_DIRECTION_DESC,
+    MESSAGE_SORT_PHOTOS: MESSAGE_SORT_DIRECTION_DESC,
+}
+
+# Compat: valores heredados del endpoint /api/messages (deprecados).
 MESSAGE_HISTORY_SORT_MESSAGE = "message"
 MESSAGE_HISTORY_SORT_IMAGE = "image"
 MESSAGE_HISTORY_SORT_VALUES = (MESSAGE_HISTORY_SORT_MESSAGE, MESSAGE_HISTORY_SORT_IMAGE)
@@ -187,6 +216,36 @@ def normalize_message_history_sort(sort: str | None) -> str:
     if sort == MESSAGE_HISTORY_SORT_IMAGE:
         return MESSAGE_HISTORY_SORT_IMAGE
     return MESSAGE_HISTORY_SORT_MESSAGE
+
+
+def normalize_message_sort(sort: str | None) -> str:
+    """Normaliza el orden del listado de mensajes (date | title | length | photos)."""
+    if sort == MESSAGE_SORT_TITLE:
+        return MESSAGE_SORT_TITLE
+    if sort == MESSAGE_SORT_LENGTH:
+        return MESSAGE_SORT_LENGTH
+    if sort == MESSAGE_SORT_PHOTOS:
+        return MESSAGE_SORT_PHOTOS
+    return MESSAGE_SORT_DATE
+
+
+def normalize_message_search_in(value: str | None) -> str:
+    """Ámbito de búsqueda: solo título (por defecto) o título y cuerpo."""
+    return "both" if value == "both" else "title"
+
+
+def message_sort_default_direction(sort: str | None) -> str:
+    """Dirección por defecto del criterio: título A→Z; el resto, mayor/reciente primero."""
+    return MESSAGE_SORT_DEFAULT_DIRECTION[normalize_message_sort(sort)]
+
+
+def normalize_message_sort_direction(direction: str | None, sort: str | None = None) -> str:
+    """Dirección del orden del listado de mensajes; si falta, la propia del criterio."""
+    if direction == MESSAGE_SORT_DIRECTION_ASC:
+        return MESSAGE_SORT_DIRECTION_ASC
+    if direction == MESSAGE_SORT_DIRECTION_DESC:
+        return MESSAGE_SORT_DIRECTION_DESC
+    return message_sort_default_direction(sort)
 
 
 def list_conversations(
@@ -389,6 +448,217 @@ def list_assistant_messages(
         offset=off,
         search_in=search_in,
     )
+
+
+# ---------------------------------------------------------------------------
+# Listado de mensajes 1:1 (título + fecha + filtros + orden)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class MessageListRow:
+    message: Message
+    conversation: Conversation
+    title: str
+    length: int
+    photo_count: int
+    latest_photo_at: datetime | None
+
+
+@dataclass(frozen=True)
+class MessageListPage:
+    rows: list[MessageListRow]
+    total: int
+    limit: int
+    offset: int
+    search_in: str | None
+    models: list[dict]
+
+
+def _message_owner_filters(*, user_id: str | None = None, include_unowned: bool = False) -> list:
+    filters = [
+        Message.role == "assistant",
+        Conversation.deleted_at.is_(None),
+        Conversation.kind != Conversation.KIND_PROMPT_GENERATOR,
+    ]
+    if user_id is not None:
+        if include_unowned:
+            filters.append(or_(Conversation.user_id == user_id, Conversation.user_id.is_(None)))
+        else:
+            filters.append(Conversation.user_id == user_id)
+    return filters
+
+
+def _message_row_from(db_row) -> MessageListRow:
+    msg, conv, photo_count, latest_photo_at = db_row
+    content = strip_illustration_artifacts(msg.content or "")
+    title = (msg.title or "").strip()
+    if not title:
+        # Fallback para filas sin título (p. ej. creadas antes de la migración o por vías directas).
+        title = derive_message_title(msg.content)
+    return MessageListRow(
+        message=msg,
+        conversation=conv,
+        title=title,
+        length=len(content),
+        photo_count=int(photo_count or 0),
+        latest_photo_at=latest_photo_at,
+    )
+
+
+def _query_message_rows(
+    db: Session,
+    *,
+    user_id: str | None = None,
+    include_unowned: bool = False,
+) -> list[MessageListRow]:
+    photo_stats = (
+        db.query(
+            IllustratedImage.message_id.label("message_id"),
+            func.count(IllustratedImage.id).label("photo_count"),
+            func.max(IllustratedImage.created_at).label("latest_photo_at"),
+        )
+        .group_by(IllustratedImage.message_id)
+        .subquery()
+    )
+    filters = _message_owner_filters(user_id=user_id, include_unowned=include_unowned)
+    rows = (
+        db.query(
+            Message,
+            Conversation,
+            photo_stats.c.photo_count,
+            photo_stats.c.latest_photo_at,
+        )
+        .join(Conversation, Conversation.id == Message.conversation_id)
+        .outerjoin(photo_stats, photo_stats.c.message_id == Message.id)
+        .filter(*filters)
+        .order_by(Message.created_at.desc())
+        .all()
+    )
+    return [_message_row_from(db_row) for db_row in rows]
+
+
+def _ts(value: datetime | None) -> float:
+    return value.timestamp() if value else 0.0
+
+
+def _message_sort_primary_value(row: MessageListRow, sort: str):
+    """Valor de ordenación natural (ascendente) de la fila según el criterio."""
+    if sort == MESSAGE_SORT_TITLE:
+        return (row.title or "").casefold()
+    if sort == MESSAGE_SORT_LENGTH:
+        return row.length
+    if sort == MESSAGE_SORT_PHOTOS:
+        return (row.photo_count, _ts(row.latest_photo_at))
+    return _ts(row.message.created_at)
+
+
+def _message_secondary_key(row: MessageListRow) -> tuple:
+    """Desempate estable: fecha descendente y, por último, id."""
+    return (-_ts(row.message.created_at), row.message.id)
+
+
+def _sort_message_rows(
+    rows: list[MessageListRow], sort: str, direction: str | None = None
+) -> list[MessageListRow]:
+    """Ordena las filas por el criterio elegido; `direction` invierte solo el valor principal.
+
+    Se ordena primero por el desempate (estable) y luego por el criterio principal con
+    ``reverse``, para que la dirección no altere el desempate ni el tipo del valor (str/nº).
+    """
+    normalized = normalize_message_sort(sort)
+    descending = normalize_message_sort_direction(direction, normalized) != MESSAGE_SORT_DIRECTION_ASC
+    presorted = sorted(rows, key=_message_secondary_key)
+    return sorted(
+        presorted,
+        key=lambda r: _message_sort_primary_value(r, normalized),
+        reverse=descending,
+    )
+
+
+def _filter_message_rows(
+    rows: list[MessageListRow],
+    needle: str,
+    scope: str,
+) -> tuple[list[MessageListRow], str | None]:
+    if not needle:
+        return rows, None
+    folded = needle.casefold()
+    title_hits = [r for r in rows if folded in (r.title or "").casefold()]
+    if scope != "both":
+        return title_hits, "title"
+    both_hits = [
+        r
+        for r in rows
+        if folded in (r.title or "").casefold()
+        or folded in strip_illustration_artifacts(r.message.content or "").casefold()
+    ]
+    return both_hits, "both"
+
+
+def generating_models_from_rows(rows: list[MessageListRow]) -> list[dict]:
+    """Modelos (provider:model_id) que han generado al menos un mensaje, con su recuento."""
+    counts: dict[tuple[str, str], int] = {}
+    for row in rows:
+        model_id = (row.conversation.model_id or "").strip()
+        if not model_id:
+            continue
+        provider = (row.conversation.provider or "ollama").strip() or "ollama"
+        counts[(provider, model_id)] = counts.get((provider, model_id), 0) + 1
+    return [
+        {"provider": provider, "model_id": model_id, "count": count}
+        for (provider, model_id), count in sorted(
+            counts.items(), key=lambda kv: (kv[0][1].casefold(), kv[0][0])
+        )
+    ]
+
+
+def list_messages(
+    db: Session,
+    limit: int | None = None,
+    offset: int | None = None,
+    sort: str | None = None,
+    direction: str | None = None,
+    q: str | None = None,
+    search_in: str | None = None,
+    model_id: str | None = None,
+    *,
+    user_id: str | None = None,
+    include_unowned: bool = False,
+) -> MessageListPage:
+    """Respuestas assistant paginadas con título, orden y filtros del panel izquierdo."""
+    capped = clamp_message_history_limit(limit)
+    off = clamp_message_history_offset(offset)
+    rows = _query_message_rows(db, user_id=user_id, include_unowned=include_unowned)
+    # El selector de modelos ofrece siempre todos los generadores, no solo los de la página filtrada.
+    models = generating_models_from_rows(rows)
+    if model_id:
+        rows = [r for r in rows if (r.conversation.model_id or "") == model_id]
+    needle = _normalize_message_history_query(q)
+    filtered, effective_scope = _filter_message_rows(
+        rows, needle, normalize_message_search_in(search_in)
+    )
+    filtered = _sort_message_rows(filtered, normalize_message_sort(sort), direction)
+    total = len(filtered)
+    return MessageListPage(
+        rows=filtered[off : off + capped],
+        total=total,
+        limit=capped,
+        offset=off,
+        search_in=effective_scope,
+        models=models,
+    )
+
+
+def list_generating_models(
+    db: Session,
+    *,
+    user_id: str | None = None,
+    include_unowned: bool = False,
+) -> list[dict]:
+    """Modelos que han generado algún mensaje (para el selector del panel izquierdo)."""
+    rows = _query_message_rows(db, user_id=user_id, include_unowned=include_unowned)
+    return generating_models_from_rows(rows)
 
 
 def update_conversation(
@@ -666,11 +936,12 @@ def get_message(db: Session, conversation_id: str, message_id: str) -> Message |
 
 
 def update_message_content(db: Session, conversation_id: str, message_id: str, content: str) -> Message | None:
-    """Actualiza el content de un mensaje (p. ej. tras ilustrar)."""
+    """Actualiza el content de un mensaje (p. ej. tras ilustrar) y recalcula su título."""
     msg = get_message(db, conversation_id, message_id)
     if not msg:
         return None
     msg.content = content
+    msg.title = derive_message_title(content)
     db.commit()
     db.refresh(msg)
     return msg
@@ -696,6 +967,7 @@ def add_message(
         conversation_id=conversation_id,
         role=role,
         content=content,
+        title=derive_message_title(content),
         instruction_override=instruction_override,
         debug_request_json=debug_request_json,
         debug_response_raw=debug_response_raw,

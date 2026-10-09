@@ -15,9 +15,18 @@ import {
   persistConversationSort,
   persistLeftHistoryMode,
   persistMessageSort,
+  persistMessageSortDirection,
+  persistMessageSearchIn,
+  readStoredConversationSort,
+  readStoredMessageSort,
+  readStoredMessageSortDirection,
+  readStoredMessageSearchIn,
+  LEFT_HISTORY_MODE_CONVERSATIONS,
   LEFT_HISTORY_MODE_KEY,
   LEFT_HISTORY_SORT_CONVERSATIONS_KEY,
   LEFT_HISTORY_SORT_MESSAGES_KEY,
+  LEFT_HISTORY_SORT_DIRECTION_KEY,
+  LEFT_HISTORY_SEARCH_IN_KEY,
 } from "./history.js";
 import { debugStore, getStoredDebugLogSize, setStoredDebugLogSize, DEBUG_LOG_SIZE_STORAGE_KEY } from "./debug.js";
 import {
@@ -63,6 +72,7 @@ const PREFERENCE_CACHE_KEYS = [
   LEFT_HISTORY_MODE_KEY,
   LEFT_HISTORY_SORT_CONVERSATIONS_KEY,
   LEFT_HISTORY_SORT_MESSAGES_KEY,
+  LEFT_HISTORY_SORT_DIRECTION_KEY,
   DEBUG_LOG_SIZE_STORAGE_KEY,
   LAST_CONVERSATION_STORAGE_KEY,
 ];
@@ -142,6 +152,8 @@ export function collectPreferencesSnapshot() {
       mode: historyStore.get().mode,
       conversationSort: historyStore.get().conversationSort,
       messageSort: historyStore.get().messageSort,
+      messageSortDirection: historyStore.get().messageSortDirection,
+      messageSearchIn: historyStore.get().messageSearchIn,
     },
     debugLogSize: getStoredDebugLogSize(),
     lastConversationId: readLastConversationId() || null,
@@ -185,16 +197,26 @@ export function applyPreferencesSnapshot(raw) {
       const histPatch = {};
       if (raw.history.mode != null) {
         persistLeftHistoryMode(raw.history.mode);
-        histPatch.mode = "tree";
+        histPatch.mode =
+          raw.history.mode === LEFT_HISTORY_MODE_CONVERSATIONS
+            ? LEFT_HISTORY_MODE_CONVERSATIONS
+            : "messages";
       }
       if (raw.history.conversationSort != null) {
         persistConversationSort(raw.history.conversationSort);
-        histPatch.conversationSort =
-          raw.history.conversationSort === "created_at" ? "created_at" : "activity";
+        histPatch.conversationSort = readStoredConversationSort();
       }
       if (raw.history.messageSort != null) {
         persistMessageSort(raw.history.messageSort);
-        histPatch.messageSort = raw.history.messageSort === "image" ? "image" : "message";
+        histPatch.messageSort = readStoredMessageSort();
+      }
+      if (raw.history.messageSortDirection != null) {
+        persistMessageSortDirection(raw.history.messageSortDirection);
+        histPatch.messageSortDirection = readStoredMessageSortDirection();
+      }
+      if (raw.history.messageSearchIn != null) {
+        persistMessageSearchIn(raw.history.messageSearchIn);
+        histPatch.messageSearchIn = readStoredMessageSearchIn();
       }
       if (Object.keys(histPatch).length) historyStore.set(histPatch);
     }

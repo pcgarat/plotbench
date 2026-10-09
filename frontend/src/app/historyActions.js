@@ -7,12 +7,22 @@ import {
   persistConversationSort,
   persistLeftHistoryMode,
   persistMessageSort,
+  persistMessageSortDirection,
+  persistMessageSearchIn,
   MESSAGE_HISTORY_PAGE_SIZE,
+  MESSAGE_HISTORY_SEARCH_DEBOUNCE_MS,
   MESSAGE_TREE_ROOT_PAGE_SIZE,
   CONV_SORT_OPTIONS,
-  MSG_SORT_OPTIONS,
+  MESSAGE_SORT_OPTIONS,
+  MESSAGE_SORT_DIRECTION_ASC,
+  MESSAGE_SORT_DIRECTION_DESC,
+  defaultMessageSortDirection,
+  LEFT_HISTORY_MODE_CONVERSATIONS,
+  LEFT_HISTORY_MODE_MESSAGES,
   readStoredConversationSort,
   readStoredMessageSort,
+  readStoredMessageSortDirection,
+  readStoredMessageSearchIn,
 } from "../store/history.js";
 import { sessionStore, resetSession } from "../store/session.js";
 import {
@@ -23,11 +33,11 @@ import {
 } from "../lib/historySelection.js";
 import { visibleHistoryNodeIds } from "../lib/historyVisibleNodes.js";
 
-let messageHistoryLoadSeq = 0;
+let messageListLoadSeq = 0;
 let treeLoadSeq = 0;
 let searchTimer = null;
 
-export function mergeMessageHistoryItems(existing, incoming) {
+export function mergeMessageListItems(existing, incoming) {
   const seen = {};
   const out = [];
   (existing || []).concat(incoming || []).forEach((item) => {
@@ -58,33 +68,44 @@ export async function loadDeletedConversations() {
   }
 }
 
-export async function loadMessageHistory(options = {}) {
+/** Carga el listado de mensajes del panel izquierdo (vista por defecto). */
+export async function loadMessageList(options = {}) {
   const append = !!options.append;
-  const seq = ++messageHistoryLoadSeq;
+  const seq = ++messageListLoadSeq;
   const state = historyStore.get();
-  const sort = readStoredMessageSort();
   const params = new URLSearchParams();
+  const storedSort = readStoredMessageSort();
+  const sort = state.messageSort || storedSort;
+  const storedDirection = readStoredMessageSortDirection();
+  const direction =
+    state.messageSortDirection || storedDirection || defaultMessageSortDirection(storedSort);
   params.set("sort", sort);
+  params.set("direction", direction);
   params.set("limit", String(MESSAGE_HISTORY_PAGE_SIZE));
-  params.set("offset", String(append ? state.messageHistoryItems.length : 0));
-  const q = (state.messageHistoryQuery || "").trim();
-  if (q) params.set("q", q);
+  params.set("offset", String(append ? (state.messageListItems || []).length : 0));
+  const q = (state.messageListQuery || "").trim();
+  if (q) {
+    params.set("q", q);
+    params.set("search_in", state.messageSearchIn || readStoredMessageSearchIn());
+  }
+  if (state.messageModelFilter) params.set("model_id", state.messageModelFilter);
   try {
-    const data = await conversationsApi.listMessages(params);
-    if (seq !== messageHistoryLoadSeq) return;
+    const data = await conversationsApi.listMessagesList(params);
+    if (seq !== messageListLoadSeq) return;
     const incoming = (data && data.items) || [];
     historyStore.set({
-      messageHistoryItems: append ? mergeMessageHistoryItems(state.messageHistoryItems, incoming) : incoming,
-      messageHistoryTotal: data && typeof data.total === "number" ? data.total : incoming.length,
-      messageHistorySearchIn: data && data.search_in ? data.search_in : null,
+      messageListItems: append ? mergeMessageListItems(state.messageListItems, incoming) : incoming,
+      messageListTotal: data && typeof data.total === "number" ? data.total : incoming.length,
+      messageModels: (data && data.models) || [],
       loading: false,
     });
   } catch (e) {
-    if (seq !== messageHistoryLoadSeq) return;
+    if (seq !== messageListLoadSeq) return;
     showError("Error al cargar mensajes: " + e.message);
   }
 }
 
+/** Raíces del árbol de conversaciones (paginación incremental). */
 export async function loadMessageTreeRoots(options = {}) {
   const append = !!options.append;
   const seq = ++treeLoadSeq;
@@ -149,41 +170,68 @@ export async function refreshMessageTreePreservingExpansion() {
   await Promise.all(ids.map((id) => loadMessageTreeChildren(id)));
 }
 
+/** Refresca la vista activa del panel izquierdo (mensajes o conversaciones). */
 export async function refreshLeftHistory() {
-  if (isMessagesHistoryMode()) return loadMessageHistory();
-  return loadMessageTreeRoots();
+  if (isMessagesHistoryMode()) return loadMessageList();
+  return refreshMessageTreePreservingExpansion();
 }
 
 export async function setLeftHistoryMode(mode) {
-  const next = "tree";
+  const next = mode === LEFT_HISTORY_MODE_CONVERSATIONS
+    ? LEFT_HISTORY_MODE_CONVERSATIONS
+    : LEFT_HISTORY_MODE_MESSAGES;
   persistLeftHistoryMode(next);
   historyStore.set({ mode: next });
   document.documentElement.removeAttribute("data-history-consulta");
-  void mode;
   await refreshLeftHistory();
 }
 
 export function onLeftHistorySortChange(value) {
   if (isMessagesHistoryMode()) {
-    const sort = value === "image" ? "image" : "message";
-    persistMessageSort(sort);
-    historyStore.set({ messageSort: sort });
+    const direction = defaultMessageSortDirection(value);
+    persistMessageSort(value);
+    persistMessageSortDirection(direction);
+    historyStore.set({ messageSort: value, messageSortDirection: direction });
+    loadMessageList();
   } else {
     const sort = value === "created_at" ? "created_at" : "activity";
     persistConversationSort(sort);
     historyStore.set({ conversationSort: sort });
+    loadMessageTreeRoots();
   }
-  refreshLeftHistory();
+}
+
+export function onMessageSortDirectionToggle() {
+  const state = historyStore.get();
+  const current =
+    state.messageSortDirection || defaultMessageSortDirection(state.messageSort || "date");
+  const next = current === MESSAGE_SORT_DIRECTION_ASC
+    ? MESSAGE_SORT_DIRECTION_DESC
+    : MESSAGE_SORT_DIRECTION_ASC;
+  persistMessageSortDirection(next);
+  historyStore.set({ messageSortDirection: next });
+  if (isMessagesHistoryMode()) loadMessageList();
 }
 
 export function onMessageHistorySearchInput(value) {
-  historyStore.set({ messageHistoryQuery: value });
+  historyStore.set({ messageListQuery: value });
   if (searchTimer) clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {
     searchTimer = null;
     if (!isMessagesHistoryMode()) return;
-    loadMessageHistory();
-  }, 280);
+    loadMessageList();
+  }, MESSAGE_HISTORY_SEARCH_DEBOUNCE_MS);
+}
+
+export function onMessageSearchInChange(value) {
+  persistMessageSearchIn(value);
+  historyStore.set({ messageSearchIn: value });
+  if (isMessagesHistoryMode()) loadMessageList();
+}
+
+export function onMessageModelFilterChange(value) {
+  historyStore.set({ messageModelFilter: value || "" });
+  if (isMessagesHistoryMode()) loadMessageList();
 }
 
 export async function deleteConversationFromHistory(id) {
@@ -255,7 +303,7 @@ export async function clearConversationHistory(id) {
 }
 
 export function syncLeftHistorySortControl() {
-  return isMessagesHistoryMode() ? MSG_SORT_OPTIONS : CONV_SORT_OPTIONS;
+  return isMessagesHistoryMode() ? MESSAGE_SORT_OPTIONS : CONV_SORT_OPTIONS;
 }
 
 export function currentLeftHistorySort() {
@@ -265,18 +313,6 @@ export function currentLeftHistorySort() {
 
 export function applyConsultaChrome() {
   document.documentElement.removeAttribute("data-history-consulta");
-  const btn = document.getElementById("btn-history-messages");
-  if (btn) btn.setAttribute("aria-pressed", "false");
-  syncMessageHistoryChrome();
-}
-
-export function syncMessageHistoryChrome() {
-  const messageHistorySearchWrap = document.getElementById("message-history-search-wrap");
-  const messageHistoryPager = document.getElementById("message-history-pager");
-  if (messageHistorySearchWrap) messageHistorySearchWrap.hidden = true;
-  if (messageHistoryPager) messageHistoryPager.hidden = true;
-  const sortWrap = document.getElementById("left-history-sort");
-  if (sortWrap) sortWrap.hidden = true;
 }
 
 export function syncMessageHistoryActiveItem() {
@@ -284,17 +320,13 @@ export function syncMessageHistoryActiveItem() {
   const focusId = sessionStore.get().focusMessageId || sessionStore.get().consultaAssistantId;
   historyStore.set({ treeSelectedMessageId: focusId || null });
   if (!list) return;
-  list.querySelectorAll(".message-history-item, .message-tree-item").forEach((node) => {
+  list.querySelectorAll(".message-history-item, .message-tree-item, .message-list-item").forEach((node) => {
     node.classList.toggle("active", node.dataset.id === focusId);
   });
 }
 
 export function messageHistoryWhenIso(item, sort) {
-  return sort === "image" && item.latest_image_at ? item.latest_image_at : item.created_at;
-}
-
-export function renderMessageHistoryPager() {
-  return "Cargar más";
+  return sort === "photos" && item.latest_image_at ? item.latest_image_at : item.created_at;
 }
 
 export function currentHistoryVisibleIds(state = historyStore.get()) {

@@ -268,6 +268,39 @@ class MessageHistoryListResponse(BaseModel):
     search_in: Optional[Literal["title", "content"]] = None
 
 
+class MessageListItem(BaseModel):
+    id: str
+    conversation_id: str
+    conversation_title: str
+    parent_id: Optional[str] = None
+    content: str
+    title: str
+    length: int
+    photo_count: int
+    created_at: datetime
+    latest_image_at: datetime | None = None
+    model_id: str
+    provider: str
+
+    class Config:
+        from_attributes = True
+
+
+class MessageModelOption(BaseModel):
+    provider: str
+    model_id: str
+    count: int
+
+
+class MessageListResponse(BaseModel):
+    items: list[MessageListItem]
+    total: int
+    limit: int
+    offset: int
+    search_in: Optional[Literal["title", "both"]] = None
+    models: list[MessageModelOption] = Field(default_factory=list)
+
+
 class MessageTreeNode(BaseModel):
     id: str
     conversation_id: str

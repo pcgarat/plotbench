@@ -2,6 +2,7 @@ import { sessionStore } from "../../store/session.js";
 import { layoutStore, updateLayout } from "../../store/layout.js";
 import { useStore } from "../../hooks/useStore.js";
 import { messagesForDisplay } from "../../lib/tree.js";
+import { messagesForPane } from "../../lib/messageViewOnly.js";
 import { canLoadOlderMessage } from "../../lib/messageWindow.js";
 import { formatMessageHtml, buildCollapsibleMessageHtml, messageCollapseKey, splitFirstParagraph, escapeHtml, kickLazyIllustrations } from "../../lib/html.js";
 import { forkConversationFromMessage, deleteMessageFromHistory, findMessageWithIllustration, loadOlderMessageInView } from "../../app/sessionActions.js";
@@ -16,7 +17,6 @@ import { scheduleConversationImageFilter, highlightIllustrationInConversation } 
 import { findChatIllustration } from "../../lib/illustrationLocate.js";
 import { showNotice, showError } from "../../store/ui.js";
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { isMessagesHistoryMode } from "../../store/history.js";
 
 function splitTxt2imgPrompt(content) {
   const re = /```txt2img-prompt\n([\s\S]*?)\n```/;
@@ -482,11 +482,18 @@ export function MessagesPane() {
   const autoScroll = useStore(layoutStore, (s) => s.autoScrollDuringGeneration);
   const renderMarkdown = useStore(layoutStore, (s) => s.renderMarkdown);
   const pendingReveal = useStore(sessionStore, (s) => s.pendingReveal);
+  const messageViewOnly = useStore(sessionStore, (s) => s.messageViewOnly);
+  const messageViewOnlyMessageId = useStore(sessionStore, (s) => s.messageViewOnlyMessageId);
   const ref = useRef(null);
   const pendingScrollRestore = useRef(null);
   const loadingOlderRef = useRef(false);
-  const display = messagesForDisplay(messages, viewStartIndex);
-  const hideComposerActions = isMessagesHistoryMode();
+  // `messagesForPane` depende de la vista aislada; las suscripciones de arriba disparan el re-render.
+  const display = messagesForPane(
+    { messageViewOnly, messageViewOnlyMessageId, conversationId },
+    messagesForDisplay(messages, viewStartIndex)
+  );
+  // El composer sigue disponible en todas las vistas (incluso mensaje aislado).
+  const hideComposerActions = false;
 
   useLayoutEffect(() => {
     if (!pendingReveal) return;
