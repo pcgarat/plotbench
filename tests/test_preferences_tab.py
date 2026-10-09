@@ -128,7 +128,7 @@ def test_preferences_css_lays_out_rows():
     assert "--sidebar-left-font-scale" in css
     assert "--sidebar-right-font-scale" in css
     assert "calc(0.6875rem * var(--sidebar-left-font-scale, 1))" in css
-    assert "calc(0.75rem * var(--sidebar-right-font-scale, 1))" in css
+    assert "calc(0.8125rem * var(--sidebar-right-font-scale, 1))" in css
     chat_rule = css.split(".chat-illustration-frame {")[1].split("}")[0]
     gallery_rule = css.split(".image-gallery-card img {")[1].split("}")[0]
     assert "--chat-image-max-width" in chat_rule

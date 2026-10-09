@@ -8,6 +8,25 @@ vi.mock("../../app/boot.js", () => ({
   bootApp: vi.fn(),
 }));
 
+vi.mock("../../store/auth.js", async () => {
+  const { createStore } = await import("../../store/createStore.js");
+  const authStore = createStore({
+    ready: true,
+    user: { id: "u1", username: "tester", is_admin: false },
+    error: null,
+  });
+  return {
+    authStore,
+    fetchMe: vi.fn(async () => authStore.get().user),
+    login: vi.fn(),
+    register: vi.fn(),
+    logout: vi.fn(),
+    changePassword: vi.fn(),
+    loadUserPreferences: vi.fn(async () => ({ preferences: {} })),
+    saveUserPreferences: vi.fn(),
+  };
+});
+
 function resetPrefs() {
   localStorage.clear();
   layoutStore.set({

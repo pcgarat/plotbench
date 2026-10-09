@@ -25,7 +25,7 @@ def _css() -> str:
 
 def test_right_panel_defines_instrument_tokens():
     css = _css()
-    block = css.split(".column-right {")[-1].split("}")[0]
+    block = css.split("Panel derecho: sistema de instrumentos")[-1].split(".column-right {")[1].split("}")[0]
     for token in (
         "--rp-space-1",
         "--rp-space-2",
