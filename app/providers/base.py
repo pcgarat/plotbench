@@ -72,6 +72,7 @@ class LLMProvider(Protocol):
     - MancerProvider: Mancer.tech (API OpenAI-compatible)
     - OpenAIProvider: API oficial OpenAI
     - AbliterationProvider: abliteration.ai (API OpenAI-compatible)
+    - NanProvider: NaN Builders (API OpenAI-compatible)
     """
 
     @property

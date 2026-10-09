@@ -83,7 +83,7 @@ Tres decisiones de producto condicionan todo el diseño:
 | Frontend (`frontend/src/`) | 112 módulos JS/JSX |
 | Routers FastAPI | 10, todos bajo `/api` |
 | Tablas SQL | 10 (UUIDs, no enteros) |
-| Proveedores LLM | 4 adaptadores + *factory* con caché por tipo |
+| Proveedores LLM | 5 adaptadores + *factory* con caché por tipo |
 | Suites | 97 pytest · 47 vitest |
 
 ---
@@ -235,7 +235,7 @@ chatBot/
 │   ├── slash_commands.py             # Parser de /comando → contexto
 │   ├── migrate_*.py                  # Migraciones de arranque, idempotentes
 │   ├── routers/                      # Superficie HTTP
-│   ├── providers/                    # Protocol + 4 adaptadores + factory
+│   ├── providers/                    # Protocol + 5 adaptadores + factory
 │   ├── services/
 │   │   ├── conversation_tree.py      # Camino raíz → hoja activa
 │   │   ├── message_tree.py           # Vista global roots/children
@@ -530,7 +530,7 @@ Diseñado para estación local multi-usuario, no para Internet público. Aun as�
 | **Legado pre-multiuser** | Filas con `user_id NULL` solo las ve/edita un admin. |
 | **Cliente** | Todas las peticiones van con `credentials: "include"`. |
 
-Los proveedores remotos se **descubren**, no se listan a ciegas: `list_available_providers()` solo expone OpenAI/Mancer/Abliteration si existe la credencial correspondiente. Ollama está siempre presente.
+Los proveedores remotos se **descubren**, no se listan a ciegas: `list_available_providers()` solo expone OpenAI/Mancer/Abliteration/NaN si existe la credencial correspondiente. Ollama está siempre presente.
 
 ---
 
@@ -796,7 +796,7 @@ make chroma-clean   # borra vectores
 | `OLLAMA_HOST` | `http://localhost:11434` | Runtime local. |
 | `DATABASE_URL` | `sqlite:///./chatbot.db` | SQLAlchemy. |
 | `OLLAMA_HISTORY_TURNS` | `10` | Pares user+assistant de contexto. |
-| `DEFAULT_LLM_PROVIDER` | `ollama` | `ollama` \| `mancer` \| `openai` \| `abliteration`. |
+| `DEFAULT_LLM_PROVIDER` | `ollama` | `ollama` \| `mancer` \| `openai` \| `abliteration` \| `nan`. |
 
 ### RAG
 
@@ -814,6 +814,7 @@ make chroma-clean   # borra vectores
 | `OPENAI_ORGANIZATION_ID`, `OPENAI_PROJECT_ID` | Atribución de uso. |
 | `MANCER_API_KEY` | Habilita Mancer. |
 | `ABLIT_KEY`, `ABLIT_BASE_URL` | Habilita Abliteration. |
+| `NAN_API_KEY`, `NAN_BASE_URL` | Habilita NaN Builders (`nan`). |
 
 ### Forge / ReActor
 

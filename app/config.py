@@ -47,6 +47,8 @@ ENV_VARS_TO_SYNC = [
     "MANCER_API_KEY",
     "ABLIT_KEY",
     "ABLIT_BASE_URL",
+    "NAN_API_KEY",
+    "NAN_BASE_URL",
     "OLLAMA_HOST",
     "EMBEDDINGS_PROVIDER",
     "OLLAMA_EMBEDDING_MODEL",
@@ -116,6 +118,9 @@ class Settings(BaseSettings):
         default="https://api.abliteration.ai",
         validation_alias="ABLIT_BASE_URL",
     )
+    # NaN Builders (https://nan.builders/docs) - API compatible con OpenAI. base_url sin sufijo /v1
+    nan_api_key: str = Field(default="", validation_alias="NAN_API_KEY")
+    nan_base_url: str = Field(default="https://api.nan.builders", validation_alias="NAN_BASE_URL")
 
     # Forge Neo (ilustración de relatos) — ReplayLastGeneration
     forge_base_url: str = Field(

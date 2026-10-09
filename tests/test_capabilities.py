@@ -44,6 +44,17 @@ def test_get_provider_capabilities_provider_without_show(mock_get_provider):
     assert SHOW_MODEL not in caps
 
 
+@patch("app.providers.nan.httpx.Client")
+@patch("app.providers.nan.settings")
+def test_get_provider_capabilities_nan_has_show_model(mock_settings, mock_httpx_client):
+    """NaN tiene show_model (GET /v1/models/{id}) en el catálogo de capacidades."""
+    mock_settings.nan_api_key = "sk-nan-test"
+    mock_settings.nan_base_url = "https://api.nan.builders"
+    mock_settings.verbose = False
+    caps = get_provider_capabilities("nan")
+    assert SHOW_MODEL in caps
+
+
 @patch("app.providers.capabilities.get_provider")
 def test_get_provider_capabilities_invalid_provider(mock_get_provider):
     """Proveedor inexistente devuelve lista vacía."""

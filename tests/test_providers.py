@@ -5,6 +5,8 @@ Tests unitarios para:
 - OllamaProvider
 - MancerProvider
 - OpenAIProvider
+- AbliterationProvider
+- NanProvider
 - ProviderFactory
 """
 
@@ -466,6 +468,7 @@ class TestProviderFactory:
             mock_settings.mancer_api_key = ""
             mock_settings.openai_api_key = ""
             mock_settings.ablit_key = ""
+            mock_settings.nan_api_key = ""
             providers = ProviderFactory.list_available_providers()
             assert providers == ["ollama"]
 
@@ -475,6 +478,7 @@ class TestProviderFactory:
             mock_settings.mancer_api_key = "mcr-test-key"
             mock_settings.openai_api_key = ""
             mock_settings.ablit_key = ""
+            mock_settings.nan_api_key = ""
             providers = ProviderFactory.list_available_providers()
             assert "ollama" in providers
             assert "mancer" in providers
@@ -487,6 +491,7 @@ class TestProviderFactory:
             mock_settings.mancer_api_key = ""
             mock_settings.openai_api_key = "sk-test-key"
             mock_settings.ablit_key = ""
+            mock_settings.nan_api_key = ""
             providers = ProviderFactory.list_available_providers()
             assert "ollama" in providers
             assert "openai" in providers
@@ -499,11 +504,26 @@ class TestProviderFactory:
             mock_settings.mancer_api_key = ""
             mock_settings.openai_api_key = ""
             mock_settings.ablit_key = "ak-test-key"
+            mock_settings.nan_api_key = ""
             providers = ProviderFactory.list_available_providers()
             assert "ollama" in providers
             assert "abliteration" in providers
             assert "mancer" not in providers
             assert "openai" not in providers
+
+    def test_list_available_providers_with_nan(self):
+        """Test listado de proveedores (incluyendo NaN si hay NAN_API_KEY)."""
+        with patch("app.providers.factory.settings") as mock_settings:
+            mock_settings.mancer_api_key = ""
+            mock_settings.openai_api_key = ""
+            mock_settings.ablit_key = ""
+            mock_settings.nan_api_key = "sk-nan-test-key"
+            providers = ProviderFactory.list_available_providers()
+            assert "ollama" in providers
+            assert "nan" in providers
+            assert "mancer" not in providers
+            assert "openai" not in providers
+            assert "abliteration" not in providers
 
     def test_get_openai_provider(self):
         """Test obtener proveedor OpenAI."""
@@ -522,6 +542,25 @@ class TestProviderFactory:
             mock_settings.verbose = False
             provider = ProviderFactory.get_provider("abliteration")
             assert provider.provider_name == "abliteration"
+
+    def test_get_nan_provider(self):
+        """Test obtener proveedor NaN."""
+        with patch("app.providers.nan.settings") as mock_settings:
+            mock_settings.nan_api_key = "sk-nan-test"
+            mock_settings.nan_base_url = "https://api.nan.builders"
+            mock_settings.verbose = False
+            provider = ProviderFactory.get_provider("nan")
+            assert provider.provider_name == "nan"
+
+    def test_parse_model_id_nan_prefix(self):
+        """Test parseo de model_id con prefijo nan."""
+        with patch("app.providers.factory.settings") as mock_settings:
+            mock_settings.default_llm_provider = "ollama"
+            provider_type, model_name = ProviderFactory.parse_model_id(
+                "nan:deepseek-v4-flash"
+            )
+            assert provider_type == "nan"
+            assert model_name == "deepseek-v4-flash"
 
     def test_parse_model_id_openai_prefix(self):
         """Test parseo de model_id con prefijo openai."""
@@ -977,3 +1016,238 @@ class TestAbliterationProvider:
             from app.providers.abliteration import AbliterationProvider
             provider = AbliterationProvider()
             assert isinstance(provider, LLMProvider)
+
+
+class TestNanProvider:
+    """Tests para NanProvider (NaN Builders, API compatible OpenAI)."""
+
+    def test_provider_name(self):
+        with patch("app.providers.nan.settings") as mock_settings:
+            mock_settings.nan_api_key = "sk-nan-test"
+            mock_settings.nan_base_url = "https://api.nan.builders"
+            mock_settings.verbose = False
+            from app.providers.nan import NanProvider
+            provider = NanProvider()
+            assert provider.provider_name == "nan"
+
+    def test_default_base_url(self):
+        with patch("app.providers.nan.settings") as mock_settings:
+            mock_settings.nan_api_key = "sk-nan-test"
+            mock_settings.nan_base_url = ""
+            mock_settings.verbose = False
+            from app.providers.nan import NanProvider
+            provider = NanProvider()
+            assert provider.base_url == "https://api.nan.builders"
+
+    def test_missing_api_key(self):
+        with patch("app.providers.nan.settings") as mock_settings:
+            mock_settings.nan_api_key = ""
+            mock_settings.nan_base_url = "https://api.nan.builders"
+            from app.providers.nan import NanProvider
+            with pytest.raises(ValueError) as exc_info:
+                NanProvider()
+            assert "NAN_API_KEY" in str(exc_info.value)
+
+    def test_api_key_override(self):
+        with patch("app.providers.nan.settings") as mock_settings:
+            mock_settings.nan_api_key = "default-key"
+            mock_settings.nan_base_url = "https://api.nan.builders"
+            mock_settings.verbose = False
+            from app.providers.nan import NanProvider
+            provider = NanProvider(api_key="custom-key")
+            assert provider._api_key == "custom-key"
+
+    def test_implements_protocol(self):
+        with patch("app.providers.nan.settings") as mock_settings:
+            mock_settings.nan_api_key = "sk-nan-test"
+            mock_settings.nan_base_url = "https://api.nan.builders"
+            mock_settings.verbose = False
+            from app.providers.nan import NanProvider
+            provider = NanProvider()
+            assert isinstance(provider, LLMProvider)
+
+    def test_list_models_enriches_known_catalog(self):
+        """list_models enriquece IDs de la API con context_length y display_name del catálogo."""
+        with patch("app.providers.nan.settings") as mock_settings:
+            mock_settings.nan_api_key = "sk-nan-test"
+            mock_settings.nan_base_url = "https://api.nan.builders"
+            mock_settings.verbose = False
+            from app.providers.nan import NanProvider
+            provider = NanProvider()
+        with patch("app.providers.nan.httpx") as mock_httpx:
+            mock_resp = MagicMock()
+            mock_resp.json.return_value = {
+                "data": [
+                    {"id": "deepseek-v4-flash", "object": "model"},
+                    {"id": "gemma4", "object": "model"},
+                ]
+            }
+            mock_resp.raise_for_status = MagicMock()
+            mock_httpx.Client.return_value.__enter__.return_value.get.return_value = mock_resp
+            mock_httpx.Client.return_value.__exit__.return_value = None
+            models = provider.list_models()
+        assert len(models) == 2
+        by_name = {m.name: m for m in models}
+        assert by_name["deepseek-v4-flash"].context_length == 1_048_576
+        assert by_name["gemma4"].context_length == 262_144
+        assert by_name["deepseek-v4-flash"].display_name is not None
+        assert by_name["deepseek-v4-flash"].provider == "nan"
+
+    def test_list_models_does_not_invent_models(self):
+        """A diferencia de abliteration, NaN solo lista lo que la API devuelve (no añade catálogo)."""
+        with patch("app.providers.nan.settings") as mock_settings:
+            mock_settings.nan_api_key = "sk-nan-test"
+            mock_settings.nan_base_url = "https://api.nan.builders"
+            mock_settings.verbose = False
+            from app.providers.nan import NanProvider
+            provider = NanProvider()
+        with patch("app.providers.nan.httpx") as mock_httpx:
+            mock_resp = MagicMock()
+            mock_resp.json.return_value = {
+                "data": [{"id": "deepseek-v4-flash", "object": "model"}]
+            }
+            mock_resp.raise_for_status = MagicMock()
+            mock_httpx.Client.return_value.__enter__.return_value.get.return_value = mock_resp
+            mock_httpx.Client.return_value.__exit__.return_value = None
+            models = provider.list_models()
+        assert [m.name for m in models] == ["deepseek-v4-flash"]
+
+    def test_chat_success(self):
+        with patch("app.providers.nan.settings") as mock_settings:
+            mock_settings.nan_api_key = "sk-nan-test"
+            mock_settings.nan_base_url = "https://api.nan.builders"
+            mock_settings.verbose = False
+            from app.providers.nan import NanProvider
+            provider = NanProvider()
+        with patch("app.providers.nan.httpx") as mock_httpx:
+            mock_resp = MagicMock()
+            mock_resp.json.return_value = {
+                "choices": [{"message": {"content": "Hola desde NaN!"}}]
+            }
+            mock_resp.raise_for_status = MagicMock()
+            mock_httpx.Client.return_value.__enter__.return_value.post.return_value = mock_resp
+            mock_httpx.Client.return_value.__exit__.return_value = None
+            result = provider.chat(
+                "deepseek-v4-flash", [{"role": "user", "content": "Hi"}]
+            )
+        assert result == "Hola desde NaN!"
+
+    def test_chat_http_error(self):
+        import httpx as real_httpx
+        with patch("app.providers.nan.settings") as mock_settings:
+            mock_settings.nan_api_key = "sk-nan-test"
+            mock_settings.nan_base_url = "https://api.nan.builders"
+            mock_settings.verbose = False
+            from app.providers.nan import NanProvider
+            provider = NanProvider()
+        with patch("app.providers.nan.httpx") as mock_httpx:
+            mock_httpx.HTTPStatusError = real_httpx.HTTPStatusError
+            mock_resp = MagicMock()
+            mock_resp.status_code = 401
+            mock_resp.json.return_value = {
+                "error": {"message": "This API key does not have access to the requested model"}
+            }
+            mock_resp.raise_for_status.side_effect = real_httpx.HTTPStatusError(
+                "Unauthorized", request=MagicMock(), response=mock_resp
+            )
+            mock_httpx.Client.return_value.__enter__.return_value.post.return_value = mock_resp
+            mock_httpx.Client.return_value.__exit__.return_value = None
+            with pytest.raises(ConnectionError) as exc_info:
+                provider.chat("glm5.3", [{"role": "user", "content": "Hi"}])
+            assert "401" in str(exc_info.value)
+            assert "does not have access" in str(exc_info.value)
+
+    def test_chat_stream_content_and_done(self):
+        """chat_stream ignora reasoning_content y expone content + usage."""
+        with patch("app.providers.nan.settings") as mock_settings:
+            mock_settings.nan_api_key = "sk-nan-test"
+            mock_settings.nan_base_url = "https://api.nan.builders"
+            mock_settings.verbose = False
+            from app.providers.nan import NanProvider
+            provider = NanProvider()
+        lines = [
+            "data: " + json.dumps({"choices": [{"delta": {"reasoning_content": "pensando..."}}]}),
+            "data: " + json.dumps({"choices": [{"delta": {"content": "Hi"}}]}),
+            "data: " + json.dumps({"choices": [{"delta": {"content": " there"}}]}),
+            "data: " + json.dumps({
+                "choices": [{"delta": {}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 7, "completion_tokens": 2},
+            }),
+        ]
+
+        async def fake_aiter_lines():
+            for line in lines:
+                yield line
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.aiter_lines = lambda: fake_aiter_lines()
+
+        mock_stream_ctx = MagicMock()
+        mock_stream_ctx.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_stream_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        async def run():
+            with patch("app.providers.nan.httpx") as mock_httpx:
+                mock_async_client = MagicMock()
+                mock_async_client.stream.return_value = mock_stream_ctx
+                mock_httpx.AsyncClient.return_value.__aenter__ = AsyncMock(
+                    return_value=mock_async_client
+                )
+                mock_httpx.AsyncClient.return_value.__aexit__ = AsyncMock(return_value=None)
+                chunks = []
+                async for ch in provider.chat_stream(
+                    "deepseek-v4-flash", [{"role": "user", "content": "Hi"}]
+                ):
+                    chunks.append(ch)
+            return chunks
+
+        chunks = asyncio.run(run())
+        content_chunks = [c for c in chunks if c.type == "content"]
+        done_chunks = [c for c in chunks if c.type == "done"]
+        assert "".join(c.content for c in content_chunks) == "Hi there"
+        assert done_chunks[0].metadata.get("usage") == {
+            "prompt_tokens": 7,
+            "completion_tokens": 2,
+        }
+
+    def test_show_model_uses_known_catalog(self):
+        with patch("app.providers.nan.settings") as mock_settings:
+            mock_settings.nan_api_key = "sk-nan-test"
+            mock_settings.nan_base_url = "https://api.nan.builders"
+            mock_settings.verbose = False
+            from app.providers.nan import NanProvider
+            provider = NanProvider()
+        with patch("app.providers.nan.httpx") as mock_httpx:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 404
+            mock_httpx.Client.return_value.__enter__.return_value.get.return_value = mock_resp
+            mock_httpx.Client.return_value.__exit__.return_value = None
+            result = provider.show_model("deepseek-v4-flash")
+        assert result is not None
+        assert result["context_length"] == 1_048_576
+        assert "fetched_at" in result
+
+    def test_validate_connection_success(self):
+        with patch("app.providers.nan.settings") as mock_settings:
+            mock_settings.nan_api_key = "sk-nan-test"
+            mock_settings.nan_base_url = "https://api.nan.builders"
+            mock_settings.verbose = False
+            from app.providers.nan import NanProvider
+            provider = NanProvider()
+        with patch.object(provider, "list_models") as mock_list:
+            mock_list.return_value = [
+                ProviderModelInfo(name="deepseek-v4-flash", provider="nan")
+            ]
+            assert provider.validate_connection() is True
+
+    def test_validate_connection_failure(self):
+        with patch("app.providers.nan.settings") as mock_settings:
+            mock_settings.nan_api_key = "sk-nan-test"
+            mock_settings.nan_base_url = "https://api.nan.builders"
+            mock_settings.verbose = False
+            from app.providers.nan import NanProvider
+            provider = NanProvider()
+        with patch.object(provider, "list_models") as mock_list:
+            mock_list.side_effect = ConnectionError("API error")
+            assert provider.validate_connection() is False
