@@ -1,4 +1,4 @@
-"""Tests del generador de overlays Ollama (stub, merge, dry-run, path)."""
+"""Tests del generador de overlays (stub, merge, dry-run, path, multi-proveedor)."""
 
 from __future__ import annotations
 
@@ -8,13 +8,29 @@ from pathlib import Path
 
 import pytest
 
-from app.tools.overlay_generator.cli import OverlayGeneratorError, main, process_one_model, run_batch
+from app.services.model_contract.facts import ModelFacts, facts_from_catalog
+from app.tools.overlay_generator.cli import (
+    OverlayGeneratorError,
+    main,
+    process_one_model,
+    run_batch,
+)
 from app.tools.overlay_generator.proposal import (
     proposal_filename,
     render_proposal_markdown,
     sanitize_model_id_for_path,
 )
-from app.tools.overlay_generator.stub import merge_overlay, stub_from_show
+from app.tools.overlay_generator.stub import merge_overlay, stub_from_facts, stub_from_show
+
+
+def _facts_thinking_ctx(**overrides) -> ModelFacts:
+    base = ModelFacts(vision=True, tools=True, thinking_flag=True, context_length=131072)
+    return ModelFacts(
+        vision=overrides.get("vision", base.vision),
+        tools=overrides.get("tools", base.tools),
+        thinking_flag=overrides.get("thinking_flag", base.thinking_flag),
+        context_length=overrides.get("context_length", base.context_length),
+    )
 
 
 def _show_thinking_ctx(**extra):
@@ -26,8 +42,8 @@ def _show_thinking_ctx(**extra):
     return base
 
 
-def test_stub_from_show_solo_campos_fiables():
-    stub = stub_from_show("foo:bar", _show_thinking_ctx())
+def test_stub_from_facts_solo_campos_fiables():
+    stub = stub_from_facts(_facts_thinking_ctx())
     assert stub["capabilities"]["vision"] is True
     assert stub["capabilities"]["tools"] is True
     assert stub["capabilities"]["thinking"] == {
@@ -41,6 +57,21 @@ def test_stub_from_show_solo_campos_fiables():
     assert "structured_output" not in stub["capabilities"]
     assert "true_maps_to" not in stub["capabilities"]["thinking"]
     assert "temperature" not in stub["params"]
+
+
+def test_stub_from_facts_sin_thinking_ni_ctx():
+    stub = stub_from_facts(ModelFacts())
+    assert stub["capabilities"]["thinking"] == {"kind": "none"}
+    assert stub["capabilities"]["vision"] is False
+    assert stub["capabilities"]["tools"] is False
+    assert stub["params"] == {}
+
+
+def test_stub_from_show_sigue_funcionando():
+    """El helper de compatibilidad mantiene el comportamiento histórico."""
+    stub = stub_from_show("foo:bar", _show_thinking_ctx())
+    assert stub["capabilities"]["vision"] is True
+    assert stub["params"]["num_ctx"]["max"] == 131072
 
 
 def test_stub_from_show_ctx_por_arquitectura_prefijada():
@@ -69,8 +100,20 @@ def test_stub_tools_via_tool_use_flag():
     assert stub["capabilities"]["tools"] is True
 
 
+def test_facts_from_catalog_declara_booleanos():
+    """NaN no tiene show: los hechos salen del catálogo curado explicito."""
+    facts = facts_from_catalog(
+        {"vision": True, "tools": True, "thinking_flag": False, "context_length": 1_048_576}
+    )
+    assert facts.vision is True
+    assert facts.tools is True
+    assert facts.thinking_flag is False
+    assert facts.context_length == 1_048_576
+    assert facts_from_catalog(None) == ModelFacts()
+
+
 def test_merge_sin_existing_devuelve_stub():
-    stub = stub_from_show("m", _show_thinking_ctx())
+    stub = stub_from_facts(_facts_thinking_ctx())
     merged = merge_overlay(None, stub)
     assert merged == stub
     merged["recipes"].append({"id": "x"})
@@ -78,7 +121,7 @@ def test_merge_sin_existing_devuelve_stub():
 
 
 def test_merge_sobre_vacio_rellena_fiables():
-    stub = stub_from_show("m", _show_thinking_ctx())
+    stub = stub_from_facts(_facts_thinking_ctx())
     merged = merge_overlay({}, stub)
     assert merged["capabilities"]["vision"] is True
     assert merged["capabilities"]["thinking"]["kind"] == "boolean"
@@ -103,12 +146,8 @@ def test_merge_preserve_recipes_quirks_levels():
         "recipes": [{"id": "fast", "label": "Rápido", "params": {"think": "low"}}],
         "quirks": ["omit_prior_thinking"],
     }
-    stub = stub_from_show(
-        "gemma",
-        {
-            "capabilities": ["vision", "tools", "thinking"],
-            "model_info": {"llama.context_length": 999},
-        },
+    stub = stub_from_facts(
+        ModelFacts(vision=True, tools=True, thinking_flag=True, context_length=999)
     )
     merged = merge_overlay(existing, stub)
     assert merged["recipes"] == existing["recipes"]
@@ -127,7 +166,7 @@ def test_merge_rellena_solo_huecos_vision_y_num_ctx_max():
         "recipes": [],
         "quirks": [],
     }
-    stub = stub_from_show("m", _show_thinking_ctx())
+    stub = stub_from_facts(_facts_thinking_ctx())
     merged = merge_overlay(existing, stub)
     assert merged["capabilities"]["vision"] is True
     assert merged["capabilities"]["tools"] is True
@@ -144,7 +183,7 @@ def test_sanitize_model_id_for_path():
 
 
 def test_render_proposal_es_draft():
-    stub = stub_from_show("foo:bar", _show_thinking_ctx())
+    stub = stub_from_facts(_facts_thinking_ctx())
     md = render_proposal_markdown("foo:bar", stub, wrote_overlay=False, when=date(2026, 9, 2))
     assert md.startswith("Última modificación: 2026-09-02")
     assert "DRAFT" in md
@@ -158,14 +197,11 @@ def test_dry_run_no_escribe_archivos(tmp_path: Path):
     proposals = tmp_path / "proposals"
     proposals.mkdir()
 
-    def show_fn(_model: str):
-        return _show_thinking_ctx()
-
     result = process_one_model(
         "nuevo:modelo",
         provider="ollama",
         write=False,
-        show_fn=show_fn,
+        facts_fn=lambda _m: _facts_thinking_ctx(),
         overlay_file=overlay_file,
         proposals_dir=proposals,
     )
@@ -185,7 +221,7 @@ def test_write_persiste_overlay_y_proposal(tmp_path: Path):
         "nuevo:modelo",
         provider="ollama",
         write=True,
-        show_fn=lambda _m: _show_thinking_ctx(),
+        facts_fn=lambda _m: _facts_thinking_ctx(),
         overlay_file=overlay_file,
         proposals_dir=proposals,
     )
@@ -225,7 +261,7 @@ def test_write_sobre_curado_no_borra_recipes(tmp_path: Path):
         "gemma4:31b-cloud",
         provider="ollama",
         write=True,
-        show_fn=lambda _m: _show_thinking_ctx(),
+        facts_fn=lambda _m: _facts_thinking_ctx(),
         overlay_file=overlay_file,
         proposals_dir=proposals,
     )
@@ -236,18 +272,44 @@ def test_write_sobre_curado_no_borra_recipes(tmp_path: Path):
     assert entry["capabilities"]["thinking"]["kind"] == "levels"
 
 
-def test_show_falla_exit_sin_escritura(tmp_path: Path):
+def test_write_proveedor_nan_usa_facts_del_catalogo(tmp_path: Path):
+    """El generador soporta nan: escribe en el overlay del proveedor correcto."""
+    overlay_file = tmp_path / "nan.json"
+    overlay_file.write_text("{}", encoding="utf-8")
+    proposals = tmp_path / "proposals"
+
+    def facts_fn(_model: str) -> ModelFacts:
+        return facts_from_catalog(
+            {"vision": True, "tools": True, "thinking_flag": False, "context_length": 262_144}
+        )
+
+    process_one_model(
+        "gemma4",
+        provider="nan",
+        write=True,
+        facts_fn=facts_fn,
+        overlay_file=overlay_file,
+        proposals_dir=proposals,
+    )
+    data = json.loads(overlay_file.read_text(encoding="utf-8"))
+    assert data["gemma4"]["capabilities"]["vision"] is True
+    assert data["gemma4"]["params"]["num_ctx"]["max"] == 262_144
+    proposal = next(proposals.glob("*.md")).read_text(encoding="utf-8")
+    assert "config/model_overlays/nan.json" in proposal
+
+
+def test_facts_falla_exit_sin_escritura(tmp_path: Path):
     overlay_file = tmp_path / "ollama.json"
     overlay_file.write_text("{}", encoding="utf-8")
     proposals = tmp_path / "proposals"
     proposals.mkdir()
 
-    with pytest.raises(OverlayGeneratorError, match="show falló"):
+    with pytest.raises(OverlayGeneratorError, match="hechos"):
         process_one_model(
             "missing",
             provider="ollama",
             write=True,
-            show_fn=lambda _m: None,
+            facts_fn=lambda _m: None,
             overlay_file=overlay_file,
             proposals_dir=proposals,
         )
@@ -265,7 +327,7 @@ def test_batch_missing_dry_run(tmp_path: Path):
         provider="ollama",
         write=False,
         missing_only=True,
-        show_fn=lambda _m: _show_thinking_ctx(),
+        facts_fn=lambda _m: _facts_thinking_ctx(),
         list_fn=lambda: ["ya:existe", "falta:uno"],
         overlay_file=overlay_file,
         proposals_dir=proposals,
@@ -276,21 +338,21 @@ def test_batch_missing_dry_run(tmp_path: Path):
     assert list(proposals.iterdir()) == []
 
 
-def test_batch_best_effort_un_show_falla(tmp_path: Path, capsys):
+def test_batch_best_effort_un_fallo(tmp_path: Path, capsys):
     overlay_file = tmp_path / "ollama.json"
     overlay_file.write_text("{}", encoding="utf-8")
     proposals = tmp_path / "proposals"
 
-    def show_fn(model_id: str):
+    def facts_fn(model_id: str):
         if model_id == "malo":
             return None
-        return _show_thinking_ctx()
+        return _facts_thinking_ctx()
 
     results = run_batch(
         provider="ollama",
         write=True,
         missing_only=False,
-        show_fn=show_fn,
+        facts_fn=facts_fn,
         list_fn=lambda: ["bueno", "malo"],
         overlay_file=overlay_file,
         proposals_dir=proposals,
@@ -309,6 +371,11 @@ def test_main_requiere_modo():
     assert exc.value.code == 2
 
 
+def test_main_rechaza_proveedor_no_soportado():
+    code = main(["--provider", "mancer", "--model", "x"])
+    assert code == 2
+
+
 def test_main_dry_run_mocked(tmp_path: Path, monkeypatch):
     overlay_file = tmp_path / "ollama.json"
     overlay_file.write_text("{}", encoding="utf-8")
@@ -316,8 +383,8 @@ def test_main_dry_run_mocked(tmp_path: Path, monkeypatch):
     proposals.mkdir()
 
     monkeypatch.setattr(
-        "app.tools.overlay_generator.cli._default_show",
-        lambda _m: _show_thinking_ctx(),
+        "app.tools.overlay_generator.cli._default_facts",
+        lambda _provider: (lambda _m: _facts_thinking_ctx()),
     )
     code = main(
         [
@@ -336,12 +403,15 @@ def test_main_dry_run_mocked(tmp_path: Path, monkeypatch):
     assert list(proposals.iterdir()) == []
 
 
-def test_main_show_falla_codigo_no_cero(tmp_path: Path, monkeypatch):
+def test_main_facts_falla_codigo_no_cero(tmp_path: Path, monkeypatch):
     overlay_file = tmp_path / "ollama.json"
     overlay_file.write_text("{}", encoding="utf-8")
     proposals = tmp_path / "proposals"
     proposals.mkdir()
-    monkeypatch.setattr("app.tools.overlay_generator.cli._default_show", lambda _m: None)
+    monkeypatch.setattr(
+        "app.tools.overlay_generator.cli._default_facts",
+        lambda _provider: (lambda _m: None),
+    )
     code = main(
         [
             "--model",

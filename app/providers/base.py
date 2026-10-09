@@ -73,6 +73,10 @@ class LLMProvider(Protocol):
     - OpenAIProvider: API oficial OpenAI
     - AbliterationProvider: abliteration.ai (API OpenAI-compatible)
     - NanProvider: NaN Builders (API OpenAI-compatible)
+
+    Capacidad opcional (no en el Protocol, se comprueba con `hasattr`):
+    - model_facts(model_name) -> ModelFacts: hechos fiables del modelo para el
+      generador de overlays (Ollama los deriva de show; NaN, de su catálogo).
     """
 
     @property

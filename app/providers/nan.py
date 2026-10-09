@@ -30,30 +30,51 @@ NAN_KNOWN_MODELS: dict[str, dict[str, Any]] = {
     "glm5.3": {
         "context_length": 1_048_576,
         "display_name": "GLM 5.3 (multimodal, 1M, premium)",
+        "vision": True,
+        "tools": True,
+        "thinking_flag": True,
     },
     "deepseek-v4-flash": {
         "context_length": 1_048_576,
         "display_name": "DeepSeek V4 Flash (vision, 1M)",
+        "vision": True,
+        "tools": True,
+        "thinking_flag": True,
     },
     "glm5.3-flash": {
         "context_length": 1_048_576,
         "display_name": "GLM 5.3 Flash (multimodal, 1M)",
+        "vision": True,
+        "tools": True,
+        "thinking_flag": True,
     },
     "qwen3.8-flash": {
         "context_length": 1_048_576,
         "display_name": "Qwen 3.8 Flash (vision, 1M)",
+        "vision": True,
+        "tools": True,
+        "thinking_flag": True,
     },
     "mimo-v2.6-flash": {
         "context_length": 1_048_576,
         "display_name": "MiMo v2.6 Flash (omnimodal, 1M)",
+        "vision": True,
+        "tools": True,
+        "thinking_flag": True,
     },
     "gemma4": {
         "context_length": 262_144,
         "display_name": "Gemma 4 (vision, 262K)",
+        "vision": True,
+        "tools": True,
+        "thinking_flag": True,
     },
     "qwen3.6": {
         "context_length": 262_144,
         "display_name": "Qwen 3.6 (vision, 262K)",
+        "vision": True,
+        "tools": True,
+        "thinking_flag": True,
     },
 }
 
@@ -316,6 +337,12 @@ class NanProvider:
         if known.get("display_name"):
             out["display_name"] = known["display_name"]
         return {k: v for k, v in out.items() if v is not None and v != {}}
+
+    def model_facts(self, model_name: str):
+        """Hechos fiables del modelo (puerto ModelFacts) desde el catálogo curado."""
+        from app.services.model_contract.facts import facts_from_catalog
+
+        return facts_from_catalog(NAN_KNOWN_MODELS.get(model_name))
 
     def validate_connection(self) -> bool:
         try:

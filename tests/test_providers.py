@@ -393,6 +393,30 @@ class TestOllamaProvider:
             result = provider.show_model("llama3.2")
         assert result is None
 
+    def test_model_facts_desde_show(self):
+        """model_facts deriva los hechos fiables de /api/show (puerto ModelFacts)."""
+        provider = OllamaProvider(host="http://localhost:11434")
+        with patch.object(
+            provider,
+            "show_model",
+            return_value={
+                "capabilities": ["thinking", "vision", "tools"],
+                "model_info": {"llama.context_length": 131072},
+            },
+        ):
+            facts = provider.model_facts("llama3.2")
+        assert facts.vision is True
+        assert facts.tools is True
+        assert facts.thinking_flag is True
+        assert facts.context_length == 131072
+
+    def test_model_facts_sin_show(self):
+        provider = OllamaProvider(host="http://localhost:11434")
+        with patch.object(provider, "show_model", return_value=None):
+            facts = provider.model_facts("desconocido")
+        assert facts.context_length is None
+        assert facts.vision is False
+
 
 class TestOllamaProviderSingleton:
     """Tests para el singleton de OllamaProvider."""
@@ -1227,6 +1251,22 @@ class TestNanProvider:
         assert result is not None
         assert result["context_length"] == 1_048_576
         assert "fetched_at" in result
+
+    def test_model_facts_desde_catalogo(self):
+        """model_facts expone los hechos fiables del catálogo (puerto ModelFacts)."""
+        with patch("app.providers.nan.settings") as mock_settings:
+            mock_settings.nan_api_key = "sk-nan-test"
+            mock_settings.nan_base_url = "https://api.nan.builders"
+            mock_settings.verbose = False
+            from app.providers.nan import NanProvider
+            provider = NanProvider()
+        facts = provider.model_facts("deepseek-v4-flash")
+        assert facts.context_length == 1_048_576
+        assert facts.vision is True
+        assert facts.tools is True
+        empty = provider.model_facts("desconocido")
+        assert empty.context_length is None
+        assert empty.vision is False
 
     def test_validate_connection_success(self):
         with patch("app.providers.nan.settings") as mock_settings:

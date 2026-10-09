@@ -313,6 +313,12 @@ class OllamaProvider:
         }
         return {k: v for k, v in out.items() if v is not None}
 
+    def model_facts(self, model_name: str):
+        """Hechos fiables del modelo (puerto ModelFacts) desde `/api/show`."""
+        from app.services.model_contract.facts import facts_from_show
+
+        return facts_from_show(self.show_model(model_name))
+
     # --- Métodos adicionales específicos de Ollama ---
 
     def list_running_models(self) -> list[str]:

@@ -565,15 +565,28 @@ def test_nan_overlay_glm_reasoning_effort_por_niveles():
     assert contract.params["think"]["default"] == "high"
 
 
-def test_nan_overlay_deepseek_reasoning_adaptativo_coacciona_false():
-    """deepseek-v4-flash no permite desactivar el razonamiento: false → medium."""
+def test_nan_overlay_deepseek_reasoning_no_ajustable():
+    """deepseek-v4-flash decide su razonamiento: reasoning_effort no tiene efecto.
+
+    El contrato lo declara `kind: none` para ocultar el control (no enviar un
+    parámetro que la API acepta pero ignora) y sube el suelo de max_tokens a 16384:
+    la API eleva a 16384 cualquier valor inferior para que quepa el trazo.
+    """
     _clear_overlay_cache("nan")
     contract = resolve_model_contract("nan", "deepseek-v4-flash")
-    th = contract.capabilities.thinking
-    assert th.can_disable is False
-    assert th.true_maps_to == "medium"
-    assert normalize_think_value(th, False) == "medium"
-    assert normalize_think_value(th, True) == "medium"
+    assert contract.capabilities.thinking.kind == "none"
+    assert "think" not in contract.params
+    assert contract.params["max_tokens"]["min"] == 16384
+    assert contract.capabilities.structured_output is True
+
+
+def test_nan_overlay_qwen38_y_mimo_reasoning_no_ajustable():
+    """qwen3.8-flash y mimo-v2.6-flash gestionan su profundidad: sin control de esfuerzo."""
+    _clear_overlay_cache("nan")
+    for model in ("qwen3.8-flash", "mimo-v2.6-flash"):
+        contract = resolve_model_contract("nan", model)
+        assert contract.capabilities.thinking.kind == "none"
+        assert "think" not in contract.params
 
 
 def test_nan_overlay_gemma4_permite_desactivar_reasoning():
@@ -585,3 +598,28 @@ def test_nan_overlay_gemma4_permite_desactivar_reasoning():
     assert "none" in th.values
     assert normalize_think_value(th, "none") == "none"
     assert contract.params["think"]["api_key"] == "reasoning_effort"
+
+
+def test_nan_overlay_gemma4_y_qwen36_presupuesto_razonamiento_y_sampling():
+    """El razonamiento cuenta en max_tokens y llega a 32768; sampling documentado.
+
+    gemma4/qwen3.6 alcanzan un budget de razonamiento de 32768 tokens en `max`,
+    así que el default de max_tokens debe cubrirlo. Docs NaN: temp=0.6, top_p=0.95.
+    """
+    _clear_overlay_cache("nan")
+    for model in ("gemma4", "qwen3.6"):
+        contract = resolve_model_contract("nan", model)
+        assert contract.params["max_tokens"]["default"] >= 32768
+        assert contract.params["temperature"]["default"] == 0.6
+        assert contract.params["top_p"]["default"] == 0.95
+        recipe_ids = {r.id for r in contract.recipes}
+        assert {"fast", "hard"} <= recipe_ids
+
+
+def test_nan_overlay_recetas_recortan_o_ajustan_esfuerzo():
+    """Los modelos con niveles exponen recetas que fijan think."""
+    _clear_overlay_cache("nan")
+    contract = resolve_model_contract("nan", "glm5.3")
+    by_id = {r.id: r for r in contract.recipes}
+    assert by_id["fast"].params["think"] == "low"
+    assert by_id["hard"].params["think"] == "max"

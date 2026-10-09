@@ -1,34 +1,38 @@
-"""Stub fiable desde show y merge aditivo con preserve de curado."""
+"""Stub fiable desde hechos del modelo y merge aditivo con preserve de curado."""
 
 from __future__ import annotations
 
 import copy
 from typing import Any
 
-from app.services.model_contract.show_live import live_caps_from_show
+from app.services.model_contract.facts import ModelFacts, facts_from_show
 
 
-def stub_from_show(model_id: str, show: dict[str, Any]) -> dict[str, Any]:
-    """Solo campos fiables. Sin recipes/quirks/levels inventados."""
-    _ = model_id
-    live = live_caps_from_show(show)
+def stub_from_facts(facts: ModelFacts) -> dict[str, Any]:
+    """Stub con solo campos fiables. Sin recipes/quirks/levels inventados."""
     caps: dict[str, Any] = {
-        "vision": bool(live["vision"]),
-        "tools": bool(live["tools"]),
+        "vision": bool(facts.vision),
+        "tools": bool(facts.tools),
     }
-    if live["thinking_flag"]:
+    if facts.thinking_flag:
         caps["thinking"] = {"kind": "boolean", "can_disable": True, "default": True}
     else:
         caps["thinking"] = {"kind": "none"}
     params: dict[str, Any] = {}
-    if live["context_length"]:
-        params["num_ctx"] = {"max": live["context_length"]}
+    if facts.context_length:
+        params["num_ctx"] = {"max": facts.context_length}
     return {
         "capabilities": caps,
         "params": params,
         "recipes": [],
         "quirks": [],
     }
+
+
+def stub_from_show(model_id: str, show: dict[str, Any]) -> dict[str, Any]:
+    """Compatibilidad: stub a partir de una respuesta tipo `/api/show`."""
+    _ = model_id
+    return stub_from_facts(facts_from_show(show))
 
 
 def merge_overlay(existing: dict[str, Any] | None, stub: dict[str, Any]) -> dict[str, Any]:

@@ -5,23 +5,16 @@
       "tools": true,
       "structured_output": true,
       "thinking": {
-        "kind": "boolean",
-        "can_disable": false,
-        "true_maps_to": "medium",
-        "default": "medium"
+        "kind": "none"
       }
     },
     "params": {
-      "max_tokens": { "default": 16384, "max": 131072 },
-      "think": {
-        "api_key": "reasoning_effort",
-        "type": "enum",
-        "values": ["low", "medium", "high", "max"],
-        "default": "medium"
-      }
+      "max_tokens": { "default": 16384, "min": 16384, "max": 131072 }
     },
     "recipes": [
-      { "id": "hard", "label": "Máximo", "params": { "think": "max" } }
+      { "id": "chat", "label": "Chat", "params": { "temperature": 0.7 } },
+      { "id": "precise", "label": "Preciso", "params": { "temperature": 0.3 } },
+      { "id": "creative", "label": "Creativo", "params": { "temperature": 1.0 } }
     ],
     "quirks": []
   },
@@ -39,7 +32,7 @@
       }
     },
     "params": {
-      "max_tokens": { "default": 8192, "max": 131072 },
+      "max_tokens": { "default": 16384, "max": 131072 },
       "think": {
         "api_key": "reasoning_effort",
         "type": "enum",
@@ -68,7 +61,7 @@
       }
     },
     "params": {
-      "max_tokens": { "default": 8192, "max": 131072 },
+      "max_tokens": { "default": 16384, "max": 131072 },
       "think": {
         "api_key": "reasoning_effort",
         "type": "enum",
@@ -89,22 +82,17 @@
       "tools": true,
       "structured_output": false,
       "thinking": {
-        "kind": "boolean",
-        "can_disable": false,
-        "true_maps_to": "medium",
-        "default": "medium"
+        "kind": "none"
       }
     },
     "params": {
-      "max_tokens": { "default": 8192, "max": 131072 },
-      "think": {
-        "api_key": "reasoning_effort",
-        "type": "enum",
-        "values": ["low", "medium", "high", "max"],
-        "default": "medium"
-      }
+      "max_tokens": { "default": 16384, "max": 131072 }
     },
-    "recipes": [],
+    "recipes": [
+      { "id": "chat", "label": "Chat", "params": { "temperature": 0.7 } },
+      { "id": "precise", "label": "Preciso", "params": { "temperature": 0.3 } },
+      { "id": "creative", "label": "Creativo", "params": { "temperature": 1.0 } }
+    ],
     "quirks": []
   },
   "mimo-v2.6-flash": {
@@ -113,22 +101,17 @@
       "tools": true,
       "structured_output": false,
       "thinking": {
-        "kind": "boolean",
-        "can_disable": false,
-        "true_maps_to": "medium",
-        "default": "medium"
+        "kind": "none"
       }
     },
     "params": {
-      "max_tokens": { "default": 8192, "min": 300, "max": 131072 },
-      "think": {
-        "api_key": "reasoning_effort",
-        "type": "enum",
-        "values": ["low", "medium", "high", "max"],
-        "default": "medium"
-      }
+      "max_tokens": { "default": 16384, "min": 300, "max": 131072 }
     },
-    "recipes": [],
+    "recipes": [
+      { "id": "chat", "label": "Chat", "params": { "temperature": 0.7 } },
+      { "id": "precise", "label": "Preciso", "params": { "temperature": 0.3 } },
+      { "id": "creative", "label": "Creativo", "params": { "temperature": 1.0 } }
+    ],
     "quirks": []
   },
   "gemma4": {
@@ -145,7 +128,9 @@
       }
     },
     "params": {
-      "max_tokens": { "default": 8192, "max": 131072 },
+      "temperature": { "default": 0.6 },
+      "top_p": { "default": 0.95 },
+      "max_tokens": { "default": 32768, "max": 131072 },
       "think": {
         "api_key": "reasoning_effort",
         "type": "enum",
@@ -154,8 +139,10 @@
       }
     },
     "recipes": [
-      { "id": "fast", "label": "Rápido", "params": { "think": "none" } },
-      { "id": "hard", "label": "Máximo", "params": { "think": "max" } }
+      { "id": "fast", "label": "Rápido", "params": { "think": "none", "temperature": 0.6, "top_p": 0.95 } },
+      { "id": "ocr", "label": "OCR / docs", "params": { "think": "medium", "temperature": 0.6, "top_p": 0.95 } },
+      { "id": "coding", "label": "Coding", "params": { "think": "high", "temperature": 0.6, "top_p": 0.95 } },
+      { "id": "hard", "label": "Máximo", "params": { "think": "max", "temperature": 0.6, "top_p": 0.95 } }
     ],
     "quirks": []
   },
@@ -173,7 +160,9 @@
       }
     },
     "params": {
-      "max_tokens": { "default": 8192, "max": 131072 },
+      "temperature": { "default": 0.6 },
+      "top_p": { "default": 0.95 },
+      "max_tokens": { "default": 32768, "max": 131072 },
       "think": {
         "api_key": "reasoning_effort",
         "type": "enum",
@@ -182,9 +171,10 @@
       }
     },
     "recipes": [
-      { "id": "fast", "label": "Rápido", "params": { "think": "none" } },
-      { "id": "coding", "label": "Coding", "params": { "think": "high" } },
-      { "id": "hard", "label": "Máximo", "params": { "think": "max" } }
+      { "id": "fast", "label": "Rápido", "params": { "think": "none", "temperature": 0.6, "top_p": 0.95 } },
+      { "id": "ocr", "label": "OCR / docs", "params": { "think": "medium", "temperature": 0.6, "top_p": 0.95 } },
+      { "id": "coding", "label": "Coding", "params": { "think": "high", "temperature": 0.6, "top_p": 0.95 } },
+      { "id": "hard", "label": "Máximo", "params": { "think": "max", "temperature": 0.6, "top_p": 0.95 } }
     ],
     "quirks": []
   }

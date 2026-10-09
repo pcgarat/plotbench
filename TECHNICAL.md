@@ -387,7 +387,7 @@ flowchart LR
     out --> quirks["apply_history_quirks"]
 ```
 
-`overlay_generator` es una herramienta **offline y aditiva**: consulta `show`, genera un *stub* fiable y lo fusiona sin pisar lo curado a mano. Emite propuesta Markdown en `docs/research/overlay-proposals/` antes de persistir (`WRITE=1`).
+`overlay_generator` es una herramienta **offline y aditiva**: obtiene los **hechos fiables** del modelo (puerto `ModelFacts`), genera un *stub* y lo fusiona sin pisar lo curado a mano. Emite propuesta Markdown en `docs/research/overlay-proposals/` antes de persistir (`WRITE=1`). Los hechos dependen del proveedor vía la capacidad opcional `model_facts`: Ollama los deriva de `/api/show`; NaN, de su catálogo curado (`NAN_KNOWN_MODELS`), porque su API no expone un endpoint de detalle por modelo.
 
 ### 5.4 Pipeline de ilustración
 
@@ -851,6 +851,7 @@ make chroma-clean   # borra vectores
 | **Overlays** | |
 | `make overlay MODEL=qwen3:8b` | Dry-run + propuesta. |
 | `make overlay MODEL=qwen3:8b WRITE=1` | Persiste stub aditivo. |
+| `make overlay PROVIDER=nan MODEL=gemma4` | Stub desde el catálogo de NaN. |
 | `make overlay-batch` | Modelos sin overlay. |
 
 ---

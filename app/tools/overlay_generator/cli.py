@@ -1,4 +1,4 @@
-"""CLI del generador de overlays Ollama."""
+"""CLI del generador de overlays (Ollama y proveedores sin endpoint de detalle)."""
 
 from __future__ import annotations
 
@@ -8,37 +8,50 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+from app.services.model_contract.facts import ModelFacts
 from app.services.model_contract.overlays import overlays_path, save_overlays
 from app.tools.overlay_generator.proposal import (
     proposal_path,
     render_proposal_markdown,
     write_proposal,
 )
-from app.tools.overlay_generator.stub import merge_overlay, stub_from_show
+from app.tools.overlay_generator.stub import merge_overlay, stub_from_facts
 
-ShowFn = Callable[[str], dict[str, Any] | None]
+FactsFn = Callable[[str], ModelFacts]
 ListFn = Callable[[], list[str]]
+
+# Proveedores con generador de stub fiable (Ollama vía show; NaN vía catálogo).
+FACT_PROVIDERS = ("ollama", "nan")
 
 
 class OverlayGeneratorError(RuntimeError):
-    """Error de generación (show fallido, args inválidos, etc.)."""
+    """Error de generación (hechos no disponibles, args inválidos, etc.)."""
 
 
-def _default_show(model_id: str) -> dict[str, Any] | None:
+def _default_facts(provider: str) -> FactsFn:
+    """Devuelve la función de hechos del proveedor.
+
+    Usa la capacidad opcional `model_facts`; si el proveedor no la implementa,
+    falla explícitamente en vez de inventar datos.
+    """
     from app.providers import get_provider
 
-    provider = get_provider("ollama")
-    show = getattr(provider, "show_model", None)
-    if not callable(show):
-        return None
-    return show(model_id)
+    instance = get_provider(provider)
+    facts = getattr(instance, "model_facts", None)
+    if not callable(facts):
+        raise OverlayGeneratorError(
+            f"El proveedor {provider!r} no expone hechos de modelo (model_facts)"
+        )
+    return facts
 
 
-def _default_list_models() -> list[str]:
-    from app.providers import get_provider
+def _default_list_models(provider: str) -> ListFn:
+    def _list() -> list[str]:
+        from app.providers import get_provider
 
-    provider = get_provider("ollama")
-    return [m.name for m in provider.list_models()]
+        return [m.name for m in get_provider(provider).list_models()]
+
+    return _list
 
 
 def _load_overlay_file(path: Path) -> dict[str, Any]:
@@ -58,7 +71,7 @@ def process_one_model(
     *,
     provider: str,
     write: bool,
-    show_fn: ShowFn,
+    facts_fn: FactsFn,
     overlay_file: Path,
     proposals_dir: Path,
     overlays_data: dict[str, Any] | None = None,
@@ -67,15 +80,20 @@ def process_one_model(
     Genera stub (+ propuesta). Si write=False no toca disco.
 
     Returns:
-        Dict con stub, merged, proposal_path, wrote flags.
+        Dict con stub, merged, proposal_path, proposal_markdown y flags wrote_*.
     """
-    show = show_fn(model_id)
-    if not show:
+    try:
+        facts = facts_fn(model_id)
+    except Exception as exc:  # noqa: BLE001 — se reencuadra como error de generación
         raise OverlayGeneratorError(
-            f"show falló o modelo inexistente: provider={provider!r} model={model_id!r}"
+            f"no se pudieron obtener hechos: provider={provider!r} model={model_id!r}: {exc}"
+        ) from exc
+    if facts is None:
+        raise OverlayGeneratorError(
+            f"no se pudieron obtener hechos: provider={provider!r} model={model_id!r}"
         )
 
-    stub = stub_from_show(model_id, show)
+    stub = stub_from_facts(facts)
     data = overlays_data if overlays_data is not None else _load_overlay_file(overlay_file)
     existing = data.get(model_id) if isinstance(data.get(model_id), dict) else None
     merged = merge_overlay(existing, stub)
@@ -128,7 +146,7 @@ def run_single(
     *,
     provider: str = "ollama",
     write: bool = False,
-    show_fn: ShowFn | None = None,
+    facts_fn: FactsFn | None = None,
     overlay_file: Path | None = None,
     proposals_dir: Path | None = None,
 ) -> dict[str, Any]:
@@ -141,7 +159,7 @@ def run_single(
         model_id,
         provider=provider,
         write=write,
-        show_fn=show_fn or _default_show,
+        facts_fn=facts_fn or _default_facts(provider),
         overlay_file=overlay_path,
         proposals_dir=props,
     )
@@ -152,7 +170,7 @@ def run_batch(
     provider: str = "ollama",
     write: bool = False,
     missing_only: bool = True,
-    show_fn: ShowFn | None = None,
+    facts_fn: FactsFn | None = None,
     list_fn: ListFn | None = None,
     overlay_file: Path | None = None,
     proposals_dir: Path | None = None,
@@ -160,16 +178,15 @@ def run_batch(
     """
     Batch: missing (list ∩ ¬ overlay) o all listados.
 
-    Un fallo de show no aborta el lote entero (best-effort); se reporta y continúa.
-    Con --write, el JSON se guarda por modelo exitoso (no deja el archivo a medias
-    por un show fallido posterior).
+    Un fallo de hechos no aborta el lote entero (best-effort); se reporta y continúa.
+    Con --write, el JSON se guarda por modelo exitoso (no deja el archivo a medias).
     """
     from app.tools.overlay_generator.proposal import DEFAULT_PROPOSALS_DIR
 
     overlay_path = overlay_file or overlays_path(provider)
     props = proposals_dir or DEFAULT_PROPOSALS_DIR
-    show = show_fn or _default_show
-    listed = (list_fn or _default_list_models)()
+    facts = facts_fn or _default_facts(provider)
+    listed = (list_fn or _default_list_models(provider))()
     data = _load_overlay_file(overlay_path)
 
     if missing_only:
@@ -192,7 +209,7 @@ def run_batch(
                 model_id,
                 provider=provider,
                 write=write,
-                show_fn=show,
+                facts_fn=facts,
                 overlay_file=overlay_path,
                 proposals_dir=props,
                 overlays_data=data,
@@ -210,9 +227,13 @@ def run_batch(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m app.tools.overlay_generator",
-        description="Genera stub de overlay Ollama + propuesta DRAFT (dry-run por defecto).",
+        description="Genera stub de overlay + propuesta DRAFT (dry-run por defecto).",
     )
-    parser.add_argument("--provider", default="ollama", help="Proveedor (MVP: ollama)")
+    parser.add_argument(
+        "--provider",
+        default="ollama",
+        help=f"Proveedor ({', '.join(FACT_PROVIDERS)})",
+    )
     parser.add_argument("--model", help="Model id (modo un modelo)")
     parser.add_argument("--write", action="store_true", help="Persistir overlay + propuesta")
     parser.add_argument(
@@ -244,8 +265,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    if args.provider != "ollama":
-        print(f"Proveedor no soportado en MVP: {args.provider!r}", file=sys.stderr)
+    if args.provider not in FACT_PROVIDERS:
+        print(
+            f"Proveedor no soportado para generación de overlays: {args.provider!r} "
+            f"(disponibles: {', '.join(FACT_PROVIDERS)})",
+            file=sys.stderr,
+        )
         return 2
 
     modes = sum(bool(x) for x in (args.model, args.batch_missing, args.batch_all))
