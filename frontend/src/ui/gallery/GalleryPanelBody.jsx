@@ -76,22 +76,6 @@ export function GalleryPanelBody() {
       </div>
       <div className="image-gallery-grid" id="image-gallery-grid"></div>
       <div className="image-gallery-pager" id="image-gallery-pager"></div>
-      <div id="image-gallery-lightbox" className="modal-overlay image-gallery-lightbox" role="dialog" aria-modal="true" aria-labelledby="image-gallery-lightbox-title" hidden>
-        <div className="modal-content image-gallery-lightbox-content">
-          <div className="image-gallery-lightbox-header">
-            <h2 id="image-gallery-lightbox-title" className="modal-title">Imagen generada</h2>
-            <button type="button" id="image-gallery-lightbox-close" className="icon-btn" title="Cerrar" aria-label="Cerrar">×</button>
-          </div>
-          <div className="image-gallery-lightbox-body">
-            <div className="image-gallery-lightbox-media">
-              <button type="button" id="image-gallery-lightbox-prev" className="image-gallery-lightbox-nav" title="Anterior" aria-label="Imagen anterior">‹</button>
-              <img id="image-gallery-lightbox-img" alt="" />
-              <button type="button" id="image-gallery-lightbox-next" className="image-gallery-lightbox-nav" title="Siguiente" aria-label="Imagen siguiente">›</button>
-            </div>
-            <div className="image-gallery-lightbox-meta" id="image-gallery-lightbox-meta"></div>
-          </div>
-        </div>
-      </div>
     </>
   );
 }

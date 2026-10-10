@@ -6189,6 +6189,7 @@ textarea:focus:not(:focus-visible) {
 
 .chat-illustration {
   border-radius: var(--radius-md);
+  cursor: zoom-in;
 }
 
 .chat-illustration-info-btn {

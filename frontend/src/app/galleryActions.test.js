@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { fireEvent } from "@testing-library/react";
 import { imagesStore } from "../store/images.js";
 import { sessionStore } from "../store/session.js";
 import {
@@ -12,6 +13,10 @@ import {
   highlightIllustrationInConversation,
   closeGalleryLightbox,
   handleGalleryLightboxOverlayClick,
+  openChatImageViewer,
+  bindChatIllustrationViewerOpen,
+  collectChatIllustrationItems,
+  stepGalleryLightbox,
   galleryTotalPages,
   galleryCurrentPage,
   galleryOffsetForPage,
@@ -505,6 +510,124 @@ describe("galería", () => {
     expect(imagesStore.get().galleryOffset).toBe(48);
     await vi.waitFor(() => {
       expect(urls.some((u) => u.includes("offset=48"))).toBe(true);
+    });
+  });
+
+  describe("visor de fotos del chat", () => {
+    function fixtureChat() {
+      document.body.innerHTML = `
+        <div id="image-gallery-lightbox" hidden>
+          <img id="image-gallery-lightbox-img" alt="" />
+          <button type="button" id="image-gallery-lightbox-prev"></button>
+          <button type="button" id="image-gallery-lightbox-next"></button>
+          <div id="image-gallery-lightbox-meta"></div>
+        </div>
+        <div id="messages-container">
+          <div class="message-row" data-msg-id="m1">
+            <span class="chat-illustration-frame">
+              <img class="chat-illustration" data-filename="faro.png" data-scene="s1" src="/api/illustrated-images/faro.png" />
+            </span>
+          </div>
+          <div class="message-row" data-msg-id="m2">
+            <span class="chat-illustration-frame">
+              <img class="chat-illustration" data-filename="playa.png" data-scene="s2" src="/api/illustrated-images/playa.png" />
+            </span>
+          </div>
+        </div>
+      `;
+    }
+
+    it("abre el visor con la foto pulsada y navega por las fotos de la conversación", async () => {
+      fixtureChat();
+      sessionStore.set({ conversationId: "c1" });
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ params: { prompt: "un faro" }, mode: "txt2img" }),
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      expect(openChatImageViewer("playa.png")).toBe(true);
+      const modal = document.getElementById("image-gallery-lightbox");
+      expect(modal.hidden).toBe(false);
+      expect(imagesStore.get().imageViewerSource).toBe("chat");
+      expect(imagesStore.get().chatViewerItems.map((i) => i.filename)).toEqual([
+        "faro.png",
+        "playa.png",
+      ]);
+      expect(imagesStore.get().chatViewerIndex).toBe(1);
+      expect(document.getElementById("image-gallery-lightbox-img").src).toContain("playa.png");
+      expect(document.getElementById("image-gallery-lightbox-next").disabled).toBe(true);
+
+      await vi.waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(
+          "/api/illustrated-images/playa.png/meta",
+          expect.anything()
+        );
+      });
+
+      stepGalleryLightbox(-1);
+      expect(imagesStore.get().chatViewerIndex).toBe(0);
+      expect(document.getElementById("image-gallery-lightbox-img").src).toContain("faro.png");
+      expect(document.getElementById("image-gallery-lightbox-prev").disabled).toBe(true);
+    });
+
+    it("Ir al mensaje desde el visor del chat cierra el visor y ancla la foto", async () => {
+      fixtureChat();
+      sessionStore.set({ conversationId: "c1" });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ params: {} }) })
+      );
+      openChatImageViewer("faro.png");
+      document.getElementById("gallery-open-message").click();
+      await vi.waitFor(() => {
+        expect(openConversationAtIllustration).toHaveBeenCalledWith("c1", "m1", {
+          filename: "faro.png",
+          sceneId: "s1",
+        });
+      });
+      expect(document.getElementById("image-gallery-lightbox").hidden).toBe(true);
+      expect(imagesStore.get().imageViewerSource).toBeNull();
+    });
+
+    it("pulsar una foto del chat abre el visor (delegación en captura)", () => {
+      fixtureChat();
+      sessionStore.set({ conversationId: "c1" });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ params: {} }) })
+      );
+      bindChatIllustrationViewerOpen();
+      const img = document.querySelector('img[data-filename="playa.png"]');
+      fireEvent.click(img);
+      expect(imagesStore.get().imageViewerSource).toBe("chat");
+      expect(imagesStore.get().chatViewerIndex).toBe(1);
+      expect(document.getElementById("image-gallery-lightbox").hidden).toBe(false);
+    });
+
+    it("cerrar el visor limpia la fuente activa", () => {
+      fixtureChat();
+      sessionStore.set({ conversationId: "c1" });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ params: {} }) })
+      );
+      openChatImageViewer("faro.png");
+      closeGalleryLightbox();
+      expect(imagesStore.get().imageViewerSource).toBeNull();
+      expect(imagesStore.get().galleryLightboxIndex).toBe(-1);
+    });
+
+    it("no incluye fotos ocultas por los filtros de galería", () => {
+      fixtureChat();
+      sessionStore.set({ conversationId: "c1" });
+      document
+        .querySelector('img[data-filename="faro.png"]')
+        .closest(".chat-illustration-frame")
+        .classList.add("is-gallery-filter-hidden");
+      const items = collectChatIllustrationItems();
+      expect(items.map((i) => i.filename)).toEqual(["playa.png"]);
     });
   });
 });

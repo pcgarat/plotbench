@@ -910,6 +910,29 @@ export default function App() {
         </div>
       </footer>
       <ReadingModeOverlay />
+      <div
+        id="image-gallery-lightbox"
+        className="modal-overlay image-gallery-lightbox"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="image-gallery-lightbox-title"
+        hidden
+      >
+        <div className="modal-content image-gallery-lightbox-content">
+          <div className="image-gallery-lightbox-header">
+            <h2 id="image-gallery-lightbox-title" className="modal-title">Imagen generada</h2>
+            <button type="button" id="image-gallery-lightbox-close" className="icon-btn" title="Cerrar" aria-label="Cerrar">×</button>
+          </div>
+          <div className="image-gallery-lightbox-body">
+            <div className="image-gallery-lightbox-media">
+              <button type="button" id="image-gallery-lightbox-prev" className="image-gallery-lightbox-nav" title="Anterior" aria-label="Imagen anterior">‹</button>
+              <img id="image-gallery-lightbox-img" alt="" />
+              <button type="button" id="image-gallery-lightbox-next" className="image-gallery-lightbox-nav" title="Siguiente" aria-label="Imagen siguiente">›</button>
+            </div>
+            <div className="image-gallery-lightbox-meta" id="image-gallery-lightbox-meta"></div>
+          </div>
+        </div>
+      </div>
       <div id="model-info-modal" className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="model-info-modal-title" hidden>
         <div className="modal-content model-info-modal-content">
           <h2 id="model-info-modal-title" className="modal-title">Ficha del modelo</h2>
@@ -959,15 +982,6 @@ export default function App() {
       </div>
       <div id="image-queue-context-menu" className="image-queue-context-menu" role="menu" hidden>
         <button type="button" className="msg-context-item" role="menuitem" data-action="delete">Eliminar</button>
-      </div>
-      <div id="illustration-meta-modal" className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="illustration-meta-title" hidden>
-        <div className="modal-content illustration-meta-modal-content">
-          <div className="illustration-meta-header">
-            <h2 id="illustration-meta-title" className="modal-title">Parámetros de generación</h2>
-            <button type="button" id="illustration-meta-close" className="icon-btn" title="Cerrar" aria-label="Cerrar">×</button>
-          </div>
-          <div id="illustration-meta-body" className="illustration-meta-body"></div>
-        </div>
       </div>
       <div id="workspace-profile-name-modal" className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="workspace-profile-name-title" hidden>
         <div className="modal-content workspace-profile-name-modal">
