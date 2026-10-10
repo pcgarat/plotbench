@@ -241,6 +241,27 @@ describe("ConversationsList vista de mensajes", () => {
     expect(openIsolatedMessage).not.toHaveBeenCalled();
   });
 
+  it("muestra el error de carga en lugar del estado vacío", () => {
+    historyStore.set({
+      messageListItems: [],
+      messageListTotal: 0,
+      messageListError: "Error al cargar mensajes: 422 limit <= 100",
+    });
+    render(<ConversationsList />);
+    const err = document.querySelector("#messages-list .message-list-error");
+    expect(err).toBeTruthy();
+    expect(err.textContent).toContain("Error al cargar mensajes");
+    expect(document.querySelector("#messages-list").textContent).not.toContain("No hay mensajes todavía.");
+  });
+
+  it("sin error muestra el estado vacío habitual", () => {
+    historyStore.set({ messageListItems: [], messageListTotal: 0, messageListError: null });
+    render(<ConversationsList />);
+    const list = document.querySelector("#messages-list");
+    expect(list.querySelector(".message-list-error")).toBeNull();
+    expect(list.textContent).toContain("No hay mensajes todavía.");
+  });
+
   it("cambiar el orden de mensajes llama a onLeftHistorySortChange", () => {
     render(<ConversationsList />);
     fireEvent.change(document.getElementById("left-history-sort-select"), { target: { value: "photos" } });

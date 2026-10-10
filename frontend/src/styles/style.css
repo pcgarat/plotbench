@@ -1227,6 +1227,12 @@ body {
   padding-left: 0;
 }
 
+.message-list-error {
+  color: var(--destructive, #c42b1c);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 /* Parámetros que se enviarán: sin recuadro (solo título "Se enviarán al modelo" arriba) */
 .params-to-send-container {
   flex-shrink: 0;

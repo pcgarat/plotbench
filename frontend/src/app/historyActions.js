@@ -103,10 +103,12 @@ export async function loadMessageList(options = {}) {
       hasMissingModels: !!(data && data.has_missing_model),
       messagePageSize: pageSize,
       messagePage: clampPage(page, totalPages(total, pageSize)),
+      messageListError: null,
       loading: false,
     });
   } catch (e) {
     if (seq !== messageListLoadSeq) return;
+    historyStore.set({ messageListError: "Error al cargar mensajes: " + e.message });
     showError("Error al cargar mensajes: " + e.message);
   }
 }

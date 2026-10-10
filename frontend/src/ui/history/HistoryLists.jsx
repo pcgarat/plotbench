@@ -233,6 +233,7 @@ export function MessagesList() {
   const page = useStore(historyStore, (s) => s.messagePage || 1);
   const pageSize = useStore(historyStore, (s) => s.messagePageSize || MESSAGE_DEFAULT_PAGE_SIZE);
   const isEmptyQuery = useStore(historyStore, (s) => !!String(s.messageListQuery || "").trim());
+  const error = useStore(historyStore, (s) => s.messageListError);
   const viewOnlyId = useStore(sessionStore, (s) => s.messageViewOnlyMessageId);
   const focusId = useStore(sessionStore, (s) => s.focusMessageId || s.consultaAssistantId);
   const activeId = viewOnlyId || focusId;
@@ -259,7 +260,13 @@ export function MessagesList() {
     <>
       <div className="conversations-list" id="messages-list">
         {!items.length ? (
-          <p className="conv-group-label">{isEmptyQuery ? "Sin resultados." : "No hay mensajes todavía."}</p>
+          error ? (
+            <p className="conv-group-label message-list-error" role="alert">
+              {error}
+            </p>
+          ) : (
+            <p className="conv-group-label">{isEmptyQuery ? "Sin resultados." : "No hay mensajes todavía."}</p>
+          )
         ) : null}
         {items.map((m) => (
           <MessageListRow key={m.id} item={m} active={m.id === activeId} />

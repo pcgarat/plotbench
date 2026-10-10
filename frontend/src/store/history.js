@@ -226,6 +226,8 @@ export const historyStore = createStore({
   messageListQuery: "",
   messageModelFilter: "",
   messageModels: [],
+  /** Último error al cargar el listado; `null` si la carga fue correcta. */
+  messageListError: null,
   /** Hay mensajes sin modelo conocido: se ofrece la opción «Sin modelo» en el filtro. */
   hasMissingModels: false,
   // Paginación del listado de mensajes (página actual + tamaño por página).

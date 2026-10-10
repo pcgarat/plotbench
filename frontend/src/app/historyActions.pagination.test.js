@@ -114,4 +114,17 @@ describe("paginación del listado de mensajes", () => {
     await loadMessageList();
     expect(lastParams().get("model_id")).toBe("__none__");
   });
+
+  it("un fallo de carga queda expuesto y no como estado vacío silencioso", async () => {
+    historyStore.set({ messageListError: null });
+    listMessagesList.mockRejectedValueOnce(new Error("422: limit <= 100"));
+    await loadMessageList();
+    expect(historyStore.get().messageListError).toContain("422");
+  });
+
+  it("limpiar el error cuando la carga vuelve a funcionar", async () => {
+    historyStore.set({ messageListError: "Error previo" });
+    await loadMessageList();
+    expect(historyStore.get().messageListError).toBe(null);
+  });
 });
