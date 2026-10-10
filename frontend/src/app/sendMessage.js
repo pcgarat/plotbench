@@ -8,6 +8,7 @@ import { visibleMessages } from "../lib/tree.js";
 import { clampViewStartIndex } from "../lib/messageWindow.js";
 import { newConversation } from "./sessionActions.js";
 import { refreshLeftHistory, refreshMessageTreePreservingExpansion } from "./historyActions.js";
+import { flushPendingConversationModelSync } from "./settingsActions.js";
 import { createStreamBuffer } from "./stream.js";
 import { maybeIllustrateAssistantMessage } from "./illustrate.js";
 import { getChatRulesTextForSystem } from "./rulesActions.js";
@@ -50,10 +51,13 @@ export async function sendPromptGeneratorTurn({ force = false } = {}) {
   }
   const statusId = appStatus.push("chat", "chat.sending");
   try {
+    await flushPendingConversationModelSync();
     await promptGeneratorTurn(conversationId, {
       message: content,
       force,
       model_params: buildModelParams(),
+      provider: settingsStore.get().currentProvider,
+      model: settingsStore.get().currentModel,
     });
     sessionStore.set({ composerDraft: "" });
     const { openConversation } = await import("./sessionActions.js");
@@ -119,12 +123,19 @@ export async function sendMessage() {
   try {
     appStatus.update(chatStatusId, "chat.sending");
     const modelParams = buildModelParams();
+    // La selección viva viaja en el body: el backend la usa y la persiste, así lo que
+    // se ve en el panel es siempre lo que genera.
+    await flushPendingConversationModelSync();
+    const selectedProvider = settingsStore.get().currentProvider;
+    const selectedModel = settingsStore.get().currentModel;
     const bodyPayload = {
       content,
       instruction_override: instructionOverride,
       system_instruction_global: getChatRulesTextForSystem(),
       save_to_chromadb: settingsStore.get().saveToChromadb || "user",
     };
+    if (selectedProvider) bodyPayload.provider = selectedProvider;
+    if (selectedModel) bodyPayload.model = selectedModel;
     if (parentId) bodyPayload.parent_message_id = parentId;
     if (Object.keys(modelParams).length > 0) bodyPayload.model_params = modelParams;
     chatDebugEntry = pushChatDebugEntry({

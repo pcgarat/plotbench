@@ -142,13 +142,17 @@ export async function setCurrentConversation(conv, options = {}) {
   });
   hydrateChatRulesFromLibrary();
   saveLastConversationId(conv.id);
-  if (conv.provider) {
-    settingsStore.set({ currentProvider: conv.provider });
-    await loadParamsForProvider(conv.provider);
+  // La selección de proveedor/modelo es global (sticky): una vez el usuario la elige,
+  // abrir otra conversación no debe pisarla. Hasta entonces se adopta la de la conversación.
+  const settings = settingsStore.get();
+  if (!settings.modelSelectionLocal) {
+    const provider = conv.provider || settings.currentProvider || "ollama";
+    const model = conv.model_id || settings.currentModel || "";
+    if (provider !== settings.currentProvider || model !== settings.currentModel) {
+      settingsStore.set({ currentProvider: provider, currentModel: model });
+    }
   }
-  if (conv.model_id) {
-    settingsStore.set({ currentModel: conv.model_id });
-  }
+  if (conv.provider) await loadParamsForProvider(settingsStore.get().currentProvider);
   await loadModels(true);
   await loadModelContract({ applyParamDefaults: !conv.model_params });
   if (conv.model_params) applyConversationParams(conv.model_params);

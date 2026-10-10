@@ -236,6 +236,9 @@ class MessageSend(BaseModel):
     save_to_chromadb: SaveToChromadbKind = "user"  # qué indexar en Chroma: none, user, assistant, both
     # Solo incluir parámetros que el usuario ha modificado; si vacío o ausente, no se envían extras.
     model_params: Optional[dict[str, Any]] = None
+    # Selección viva de la UI: si llega, manda sobre lo guardado y se persiste en la conversación.
+    provider: Optional[str] = None  # ollama | mancer | openai | ...
+    model: Optional[str] = None  # model_id con el que generar el turno
 
 
 class MessageResponse(BaseModel):

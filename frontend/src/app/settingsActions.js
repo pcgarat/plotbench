@@ -196,16 +196,67 @@ export async function refreshModels() {
 }
 
 export async function changeProvider(providerName) {
-  settingsStore.set({ currentProvider: providerName });
+  settingsStore.set({ currentProvider: providerName, modelSelectionLocal: true });
   await loadParamsForProvider(providerName);
   const ok = await tryLoadModelsForProvider(providerName);
   if (!ok) await loadModels(false);
   await loadModelContract({ applyParamDefaults: true });
+  scheduleConversationModelSync();
 }
 
 export function changeModel(modelId) {
-  settingsStore.set({ currentModel: modelId, modelSelectOpen: false, modelSelectQuery: "" });
+  settingsStore.set({
+    currentModel: modelId,
+    modelSelectOpen: false,
+    modelSelectQuery: "",
+    modelSelectionLocal: true,
+  });
   loadModelContract({ applyParamDefaults: true });
+  scheduleConversationModelSync();
+}
+
+/**
+ * Persiste en la conversación activa el proveedor/modelo elegidos en la UI.
+ * Sin conversación abierta solo se guarda la preferencia local. El debounce evita
+ * parches redundantes al recorrer el desplegable.
+ */
+const CONVERSATION_SYNC_DEBOUNCE_MS = 250;
+let conversationSyncTimer = null;
+let conversationSyncPromise = null;
+
+function conversationModelPayload() {
+  const { currentProvider, currentModel } = settingsStore.get();
+  return { provider: currentProvider, model_id: currentModel };
+}
+
+export function scheduleConversationModelSync() {
+  if (conversationSyncTimer) clearTimeout(conversationSyncTimer);
+  conversationSyncPromise = new Promise((resolve) => {
+    conversationSyncTimer = setTimeout(() => {
+      conversationSyncTimer = null;
+      resolve(pushConversationModelSync());
+    }, CONVERSATION_SYNC_DEBOUNCE_MS);
+  });
+}
+
+async function pushConversationModelSync() {
+  const conversationId = sessionStore.get().conversationId;
+  if (!conversationId) return;
+  try {
+    await conversationsApi.patchConversation(conversationId, conversationModelPayload());
+  } catch (_) {
+    // Silencioso: el envío del mensaje reenvía la selección viva y la persiste el backend.
+  }
+}
+
+/** Fuerza el guardado pendiente antes de una operación que pueda leer la conversación. */
+export async function flushPendingConversationModelSync() {
+  if (conversationSyncTimer) {
+    clearTimeout(conversationSyncTimer);
+    conversationSyncTimer = null;
+    conversationSyncPromise = Promise.resolve(pushConversationModelSync());
+  }
+  if (conversationSyncPromise) await conversationSyncPromise;
 }
 
 export function currentRecipes() {

@@ -6,6 +6,7 @@ export const SETTINGS_PREFS_STORAGE_KEY = "chatbot_settings_prefs";
 export const PERSISTED_SETTINGS_KEYS = [
   "currentProvider",
   "currentModel",
+  "modelSelectionLocal",
   "historyTurns",
   "saveToChromadb",
   "paramsValues",
@@ -45,6 +46,9 @@ export const settingsStore = createStore({
   models: [],
   currentProvider: stored.currentProvider || "ollama",
   currentModel: stored.currentModel || "",
+  // El usuario ha elegido proveedor/modelo explícitamente: la selección manda sobre
+  // lo que tenga guardado cada conversación (modelo global "sticky").
+  modelSelectionLocal: Boolean(stored.modelSelectionLocal),
   paramsConfig: { provider: "", params: {} },
   paramsSource: stored.paramsSource === "user" ? "user" : "default",
   paramsBaseline: {},

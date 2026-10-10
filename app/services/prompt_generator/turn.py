@@ -95,6 +95,8 @@ def run_turn(
     message: str | None = None,
     force: bool = False,
     model_params: dict | None = None,
+    provider: str | None = None,
+    model_id: str | None = None,
     complete_fn: CompleteFn | None = None,
 ) -> TurnResult:
     conv = crud.get_conversation(db, conversation_id)
@@ -103,6 +105,16 @@ def run_turn(
     kind = getattr(conv, "kind", None) or "chat"
     if kind != "prompt_generator":
         raise PermissionError("La conversación no es prompt_generator")
+
+    # Selección viva de la UI: si llega, se aplica y se persiste para que lo mostrado sea lo usado.
+    updates = {}
+    if provider and provider != conv.provider:
+        updates["provider"] = provider
+    if model_id and model_id != conv.model_id:
+        updates["model_id"] = model_id
+    if updates:
+        crud.update_conversation(db, conversation_id, **updates)
+        conv = crud.get_conversation(db, conversation_id)
 
     user_text = (message or "").strip()
     forced = bool(force) or detect_force(user_text)

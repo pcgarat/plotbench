@@ -92,7 +92,7 @@ export function clearLocalPreferencesCache() {
 }
 
 /** Claves de settings que reflejan siempre el estado vivo (no dependen de params). */
-const LIVE_SETTINGS_KEYS = ["currentProvider", "currentModel", "historyTurns", "saveToChromadb"];
+const LIVE_SETTINGS_KEYS = ["currentProvider", "currentModel", "modelSelectionLocal", "historyTurns", "saveToChromadb"];
 
 /**
  * Preferencias de ajustes a persistir. La caché local es la base para no perder
