@@ -76,3 +76,30 @@ def test_fork_prompt_generator_preserves_kind_and_brief(client):
     assert child["prompt_brief"]["lighting"] == "neon"
     assert child["messages"] == []
     assert child["forked_from_conversation_id"] == cid
+
+
+def test_turn_prompt_generator_usa_y_persiste_el_modelo_elegido(client):
+    from unittest.mock import patch
+
+    seen = {}
+
+    def fake_chat(model, messages, extra_body=None):
+        seen["model"] = model
+        return '{"assistant_text":"ok","brief_patch":{},"phase":"interview","prompt":null}'
+
+    mock_provider = type("P", (), {"chat": staticmethod(fake_chat)})()
+    cid = client.post(
+        "/api/conversations",
+        json={"kind": "prompt_generator", "model_id": "base", "provider": "ollama"},
+    ).json()["id"]
+
+    with patch("app.services.prompt_generator.turn.get_provider", return_value=mock_provider):
+        r = client.post(
+            f"/api/conversations/{cid}/prompt-generator/turn",
+            json={"message": "hola", "provider": "mancer", "model": "mistral-large"},
+        )
+    assert r.status_code == 200
+    assert seen["model"] == "mistral-large"
+    conv = client.get(f"/api/conversations/{cid}").json()
+    assert conv["provider"] == "mancer"
+    assert conv["model_id"] == "mistral-large"

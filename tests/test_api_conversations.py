@@ -980,3 +980,79 @@ def test_auto_title_en_fork_usa_el_ancla_no_el_origen_posterior(mock_get_provide
     client.post(f"/api/conversations/{child['id']}/messages", json={"content": "D"})
     child_after = client.get(f"/api/conversations/{child['id']}").json()
     assert child_after["title"] == "Solo del fork"
+
+
+class _FakeStreamChunk:
+    def __init__(self, content="ok"):
+        self.type = "content"
+        self.content = content
+        self.error = None
+        self.metadata = None
+
+
+def _fake_async_stream(*_args, **_kwargs):
+    async def _gen():
+        yield _FakeStreamChunk()
+    return _gen()
+
+
+@patch("app.routers.api_conversations.get_provider")
+def test_stream_con_provider_model_override_persiste_el_usado(mock_get_provider, client):
+    """El modelo/proveedor elegidos en la UI viajan en el body y se guardan al enviar."""
+    mock_provider = MagicMock()
+    mock_provider.chat_stream = _fake_async_stream
+    mock_get_provider.return_value = mock_provider
+    cid = client.post(
+        "/api/conversations", json={"title": "Chat", "model_id": "llama3.2", "provider": "ollama"}
+    ).json()["id"]
+
+    r = client.post(
+        f"/api/conversations/{cid}/messages/stream",
+        json={"content": "Hola", "provider": "mancer", "model": "mistral-large"},
+    )
+    assert r.status_code == 200
+    assert "ok" in r.text
+    conv = client.get(f"/api/conversations/{cid}").json()
+    assert conv["provider"] == "mancer"
+    assert conv["model_id"] == "mistral-large"
+    assert [m["content"] for m in conv["messages"] if m["role"] == "user"] == ["Hola"]
+    mock_get_provider.assert_called_with("mancer")
+
+
+@patch("app.routers.api_conversations.get_provider")
+def test_stream_sin_override_respeta_el_modelo_de_la_conversacion(mock_get_provider, client):
+    """Regresión: sin provider/model en el body se usa lo persistido en la conversación."""
+    mock_provider = MagicMock()
+    mock_provider.chat_stream = _fake_async_stream
+    mock_get_provider.return_value = mock_provider
+    cid = client.post(
+        "/api/conversations", json={"title": "Chat", "model_id": "llama3.2", "provider": "ollama"}
+    ).json()["id"]
+
+    r = client.post(f"/api/conversations/{cid}/messages/stream", json={"content": "Hola"})
+    assert r.status_code == 200
+    conv = client.get(f"/api/conversations/{cid}").json()
+    assert conv["provider"] == "ollama"
+    assert conv["model_id"] == "llama3.2"
+    mock_get_provider.assert_called_with("ollama")
+
+
+@patch("app.routers.api_conversations.get_provider")
+def test_send_message_con_override_usa_y_persiste_el_modelo_elegido(mock_get_provider, client):
+    mock_provider = MagicMock()
+    mock_provider.chat.return_value = "Respuesta."
+    mock_get_provider.return_value = mock_provider
+    cid = client.post(
+        "/api/conversations", json={"title": "Chat", "model_id": "llama3.2", "provider": "ollama"}
+    ).json()["id"]
+
+    r = client.post(
+        f"/api/conversations/{cid}/messages",
+        json={"content": "Hola", "provider": "mancer", "model": "mistral-large"},
+    )
+    assert r.status_code == 200
+    assert mock_provider.chat.call_args[0][0] == "mistral-large"
+    mock_get_provider.assert_called_with("mancer")
+    conv = client.get(f"/api/conversations/{cid}").json()
+    assert conv["provider"] == "mancer"
+    assert conv["model_id"] == "mistral-large"

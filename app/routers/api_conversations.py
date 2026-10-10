@@ -285,6 +285,24 @@ def _resolve_send_parent(db, conv, requested_parent_id: str | None) -> str | Non
     return getattr(conv, "active_leaf_message_id", None)
 
 
+def _resolve_turn_model(db, conv, provider: str | None, model_id: str | None) -> None:
+    """Proveedor/modelo vivos para el turno; respeta la conversación si nada se especifica.
+
+    Si la UI envía una selección distinta a la persistida, se aplica al turno y se guarda,
+    de modo que lo que se muestra en el panel sea siempre lo que se usa al generar.
+    """
+    updates = {}
+    if provider and provider != conv.provider:
+        updates["provider"] = provider
+    if model_id and model_id != conv.model_id:
+        updates["model_id"] = model_id
+    if not updates:
+        return
+    crud.update_conversation(db, conv.id, **updates)
+    for key, value in updates.items():
+        setattr(conv, key, value)
+
+
 @router.get("/conversations", response_model=list[ConversationListItem])
 def list_conversations(
     user: CurrentUser,
@@ -922,6 +940,7 @@ async def send_message_stream(
     Si el mensaje empieza por /git, /files, etc., se usa ese contexto MCP y el texto
     que se envía al modelo es el resto del mensaje (sin el slash command)."""
     conv = require_owned_conversation(db, conversation_id, user)
+    _resolve_turn_model(db, conv, body.provider, body.model)
 
     slash = parse_slash_command(body.content)
     user_content = slash.content
@@ -1007,6 +1026,7 @@ def send_message(
     db: Session = Depends(get_db),
 ):
     conv = require_owned_conversation(db, conversation_id, user)
+    _resolve_turn_model(db, conv, body.provider, body.model)
 
     slash = parse_slash_command(body.content)
     user_content = slash.content

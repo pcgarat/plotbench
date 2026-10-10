@@ -23,6 +23,8 @@ class PromptGeneratorTurnIn(BaseModel):
         default=None,
         description="Params de generación vivos de la UI (prioridad sobre los de la conversación).",
     )
+    provider: Optional[str] = Field(default=None, description="Proveedor vivo de la UI; manda y se persiste.")
+    model: Optional[str] = Field(default=None, description="Modelo vivo de la UI; manda y se persiste.")
 
     @model_validator(mode="before")
     @classmethod
@@ -61,6 +63,8 @@ def prompt_generator_turn(
             message=body.message,
             force=body.force,
             model_params=body.model_params,
+            provider=body.provider,
+            model_id=body.model,
         )
     except LookupError:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
