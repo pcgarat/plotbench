@@ -93,6 +93,39 @@ def test_list_messages_excludes_non_assistant_and_trashed_and_generator(client, 
     assert "prompt del generador" not in titles
 
 
+def test_list_messages_include_deleted_shows_trashed_conversations(client, db_session):
+    """`include_deleted=true` añade los mensajes de conversaciones en la papelera y los marca."""
+    active = _conv(db_session, title="Activa")
+    _msg(db_session, active, "respuesta viva")
+    trashed = _conv(db_session, title="Papelera")
+    _msg(db_session, trashed, "respuesta en papelera")
+    trashed.deleted_at = datetime.utcnow()
+    db_session.commit()
+
+    default = _page(client)
+    assert [it["title"] for it in default["items"]] == ["respuesta viva"]
+
+    both = _page(client, include_deleted="true")
+    assert both["total"] == 2
+    by_title = {it["title"]: it for it in both["items"]}
+    assert set(by_title) == {"respuesta viva", "respuesta en papelera"}
+    assert by_title["respuesta en papelera"]["deleted"] is True
+    assert by_title["respuesta viva"]["deleted"] is False
+
+
+def test_list_messages_include_deleted_keeps_hiding_non_assistant_and_generator(client, db_session):
+    """Incluir eliminados no debe colar mensajes de usuario ni del generador de prompts."""
+    trashed = _conv(db_session, title="Papelera")
+    _msg(db_session, trashed, "pregunta del usuario", role="user")
+    generator = _conv(db_session, title="txt2img", kind=Conversation.KIND_PROMPT_GENERATOR)
+    _msg(db_session, generator, "prompt del generador")
+    generator.deleted_at = datetime.utcnow()
+    db_session.commit()
+
+    body = _page(client, include_deleted="true")
+    assert body["total"] == 0
+
+
 def test_list_messages_search_title_only_default(client, db_session):
     conv = _conv(db_session)
     _msg(db_session, conv, "El unicornio azul. Nada más.")
@@ -238,6 +271,101 @@ def test_list_messages_filter_by_model(client, db_session):
     assert body["items"][0]["title"] == "de llama"
 
 
+def test_list_messages_without_model_are_listed(client, db_session):
+    """Los mensajes de conversaciones sin modelo también se listan (no se ocultan)."""
+    conv = _conv(db_session, model_id="")
+    _msg(db_session, conv, "sin modelo conocido")
+
+    body = _page(client)
+    assert body["total"] == 1
+    assert body["items"][0]["title"] == "sin modelo conocido"
+    assert body["items"][0]["model_id"] == ""
+
+
+def test_list_messages_exposes_missing_model_facet(client, db_session):
+    """``has_missing_model`` avisa de que hay mensajes sin modelo para ofrecer el filtro."""
+    with_model = _conv(db_session, model_id="llama3.2")
+    without_model = _conv(db_session, model_id="")
+    _msg(db_session, with_model, "con modelo")
+    _msg(db_session, without_model, "sin modelo")
+
+    body = _page(client)
+    assert body["has_missing_model"] is True
+    # Los mensajes sin modelo no se cuelan en el selector de modelos.
+    assert all(m["model_id"] != "" for m in body["models"])
+
+
+def test_list_messages_missing_model_flag_false_when_all_have_model(client, db_session):
+    conv = _conv(db_session, model_id="llama3.2")
+    _msg(db_session, conv, "con modelo")
+
+    body = _page(client)
+    assert body["has_missing_model"] is False
+
+
+def test_list_messages_filter_by_missing_model(client, db_session):
+    """``model_id=__none__`` devuelve solo los mensajes sin modelo."""
+    with_model = _conv(db_session, model_id="llama3.2")
+    without_model = _conv(db_session, model_id="")
+    _msg(db_session, with_model, "con modelo")
+    _msg(db_session, without_model, "sin modelo")
+
+    body = _page(client, model_id="__none__")
+    assert body["total"] == 1
+    assert body["items"][0]["title"] == "sin modelo"
+    # El selector sigue ofreciendo todos los generadores.
+    assert {(m["provider"], m["model_id"]) for m in body["models"]} == {("ollama", "llama3.2")}
+
+
+def test_list_messages_filter_by_missing_model_empty_when_all_have_model(client, db_session):
+    conv = _conv(db_session, model_id="llama3.2")
+    _msg(db_session, conv, "con modelo")
+
+    body = _page(client, model_id="__none__")
+    assert body["total"] == 0
+
+
+def _orphan_msg(db, content):
+    """Mensaje assistant cuya conversación no existe (huérfano de origen desconocido)."""
+    msg = Message(
+        conversation_id="conversacion-inexistente",
+        role="assistant",
+        content=content,
+        created_at=datetime.utcnow(),
+    )
+    db.add(msg)
+    db.commit()
+    return msg
+
+
+def test_list_messages_include_orphans_with_unknown_origin(client, db_session):
+    """Mensajes cuya conversación ya no existe se listan como «origen desconocido»."""
+    _orphan_msg(db_session, "mensaje huérfano")
+
+    body = _page(client)
+    assert body["total"] == 1
+    item = body["items"][0]
+    assert item["title"] == "mensaje huérfano"
+    assert item["conversation_id"] is None
+    assert item["orphan"] is True
+    # El modelo vive en la conversación, así que no aparece en el selector.
+    assert body["models"] == []
+    # El filtro «Sin modelo» también los recoge (su origen es, si cabe, más desconocido).
+    assert _page(client, model_id="__none__")["total"] == 1
+
+
+def test_list_messages_orphans_visible_only_to_admin(db_session):
+    """Los huérfanos son datos sin dueño: un usuario normal no los ve, el admin sí."""
+    from app import crud
+
+    _orphan_msg(db_session, "mensaje huérfano")
+
+    # Usuario normal: no ve los datos sin dueño.
+    assert crud.list_messages(db_session, user_id="user-1").total == 0
+    # Admin (include_unowned): sí.
+    assert crud.list_messages(db_session, user_id="user-1", include_unowned=True).total == 1
+
+
 def test_list_messages_exposes_generating_models_only(client, db_session):
     a = _conv(db_session, provider="ollama", model_id="llama3.2")
     b = _conv(db_session, provider="openai", model_id="gpt-4o")
@@ -286,6 +414,21 @@ def test_list_messages_pagination_slices(client, db_session):
     second = _page(client, limit=2, offset=2)
     assert len(second["items"]) == 2
     assert {it["id"] for it in first["items"]}.isdisjoint({it["id"] for it in second["items"]})
+
+
+def test_list_messages_limit_accepts_up_to_200(client, db_session):
+    """El selector de tamaño de página ofrece hasta 200 por página."""
+    conv = _conv(db_session)
+    now = datetime.utcnow()
+    for i in range(3):
+        _msg(db_session, conv, f"m{i}", created_at=now + timedelta(minutes=i))
+
+    body = _page(client, limit=200)
+    assert body["limit"] == 200
+    assert body["total"] == 3
+
+    r = client.get("/api/messages/list", params={"limit": 201})
+    assert r.status_code == 422
 
 
 def test_list_messages_invalid_sort_is_422(client):

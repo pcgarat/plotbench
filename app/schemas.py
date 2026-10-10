@@ -270,7 +270,7 @@ class MessageHistoryListResponse(BaseModel):
 
 class MessageListItem(BaseModel):
     id: str
-    conversation_id: str
+    conversation_id: Optional[str] = None
     conversation_title: str
     parent_id: Optional[str] = None
     content: str
@@ -281,6 +281,9 @@ class MessageListItem(BaseModel):
     latest_image_at: datetime | None = None
     model_id: str
     provider: str
+    deleted: bool = False
+    # Mensaje cuya conversación ya no existe (origen desconocido).
+    orphan: bool = False
 
     class Config:
         from_attributes = True
@@ -299,6 +302,7 @@ class MessageListResponse(BaseModel):
     offset: int
     search_in: Optional[Literal["title", "both"]] = None
     models: list[MessageModelOption] = Field(default_factory=list)
+    has_missing_model: bool = False
 
 
 class MessageTreeNode(BaseModel):

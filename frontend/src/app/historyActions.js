@@ -9,7 +9,7 @@ import {
   persistMessageSort,
   persistMessageSortDirection,
   persistMessageSearchIn,
-  MESSAGE_HISTORY_PAGE_SIZE,
+  persistMessageShowDeleted,
   MESSAGE_HISTORY_SEARCH_DEBOUNCE_MS,
   MESSAGE_TREE_ROOT_PAGE_SIZE,
   CONV_SORT_OPTIONS,
@@ -23,6 +23,8 @@ import {
   readStoredMessageSort,
   readStoredMessageSortDirection,
   readStoredMessageSearchIn,
+  readStoredMessagePageSize,
+  persistMessagePageSize,
 } from "../store/history.js";
 import { sessionStore, resetSession } from "../store/session.js";
 import {
@@ -32,21 +34,16 @@ import {
   selectionForContextMenu,
 } from "../lib/historySelection.js";
 import { visibleHistoryNodeIds } from "../lib/historyVisibleNodes.js";
+import {
+  clampPage,
+  normalizePageSize,
+  pageOffset,
+  totalPages,
+} from "../lib/messagePagination.js";
 
 let messageListLoadSeq = 0;
 let treeLoadSeq = 0;
 let searchTimer = null;
-
-export function mergeMessageListItems(existing, incoming) {
-  const seen = {};
-  const out = [];
-  (existing || []).concat(incoming || []).forEach((item) => {
-    if (!item || !item.id || seen[item.id]) return;
-    seen[item.id] = true;
-    out.push(item);
-  });
-  return out;
-}
 
 export async function loadConversations() {
   const sort = readStoredConversationSort();
@@ -68,41 +65,85 @@ export async function loadDeletedConversations() {
   }
 }
 
-/** Carga el listado de mensajes del panel izquierdo (vista por defecto). */
+/** Carga una página del listado de mensajes del panel izquierdo (vista por defecto). */
 export async function loadMessageList(options = {}) {
-  const append = !!options.append;
-  const seq = ++messageListLoadSeq;
   const state = historyStore.get();
-  const params = new URLSearchParams();
-  const storedSort = readStoredMessageSort();
-  const sort = state.messageSort || storedSort;
-  const storedDirection = readStoredMessageSortDirection();
+  const pageSize = normalizePageSize(options.pageSize ?? state.messagePageSize);
+  const sort = state.messageSort || readStoredMessageSort();
   const direction =
-    state.messageSortDirection || storedDirection || defaultMessageSortDirection(storedSort);
+    state.messageSortDirection ||
+    readStoredMessageSortDirection() ||
+    defaultMessageSortDirection(sort);
+  const q = (state.messageListQuery || "").trim();
+  // El filtro, el orden y el tamaño de página reinician a la primera página; solo la
+  // navegación explícita (options.resetPage === false) respeta la página pedida.
+  const requestedPage = options.resetPage === false ? state.messagePage ?? 1 : options.page ?? 1;
+  const page = clampPage(requestedPage, totalPages(state.messageListTotal, pageSize));
+  const seq = ++messageListLoadSeq;
+  const params = new URLSearchParams();
   params.set("sort", sort);
   params.set("direction", direction);
-  params.set("limit", String(MESSAGE_HISTORY_PAGE_SIZE));
-  params.set("offset", String(append ? (state.messageListItems || []).length : 0));
-  const q = (state.messageListQuery || "").trim();
+  params.set("limit", String(pageSize));
+  params.set("offset", String(pageOffset(page, pageSize)));
   if (q) {
     params.set("q", q);
     params.set("search_in", state.messageSearchIn || readStoredMessageSearchIn());
   }
   if (state.messageModelFilter) params.set("model_id", state.messageModelFilter);
+  if (state.messageShowDeleted) params.set("include_deleted", "true");
   try {
     const data = await conversationsApi.listMessagesList(params);
     if (seq !== messageListLoadSeq) return;
     const incoming = (data && data.items) || [];
+    const total = data && typeof data.total === "number" ? data.total : incoming.length;
     historyStore.set({
-      messageListItems: append ? mergeMessageListItems(state.messageListItems, incoming) : incoming,
-      messageListTotal: data && typeof data.total === "number" ? data.total : incoming.length,
+      messageListItems: incoming,
+      messageListTotal: total,
       messageModels: (data && data.models) || [],
+      hasMissingModels: !!(data && data.has_missing_model),
+      messagePageSize: pageSize,
+      messagePage: clampPage(page, totalPages(total, pageSize)),
       loading: false,
     });
   } catch (e) {
     if (seq !== messageListLoadSeq) return;
     showError("Error al cargar mensajes: " + e.message);
   }
+}
+
+/** Navega a una página concreta del listado de mensajes (1-based). */
+export function goToMessagePage(page) {
+  const state = historyStore.get();
+  const pageSize = normalizePageSize(state.messagePageSize);
+  const target = clampPage(page, totalPages(state.messageListTotal, pageSize));
+  if (target === state.messagePage && (state.messageListItems || []).length) return;
+  historyStore.set({ messagePage: target });
+  loadMessageList({ resetPage: false });
+}
+
+export function goToFirstMessagePage() {
+  goToMessagePage(1);
+}
+
+export function goToLastMessagePage() {
+  const state = historyStore.get();
+  goToMessagePage(totalPages(state.messageListTotal, normalizePageSize(state.messagePageSize)));
+}
+
+export function goToPrevMessagePage() {
+  goToMessagePage((historyStore.get().messagePage ?? 1) - 1);
+}
+
+export function goToNextMessagePage() {
+  goToMessagePage((historyStore.get().messagePage ?? 1) + 1);
+}
+
+/** Cambia cuántos elementos se muestran por página y vuelve a la primera. */
+export function setMessagePageSize(size) {
+  const pageSize = normalizePageSize(size);
+  persistMessagePageSize(pageSize);
+  historyStore.set({ messagePageSize: pageSize });
+  if (isMessagesHistoryMode()) loadMessageList();
 }
 
 /** Raíces del árbol de conversaciones (paginación incremental). */
@@ -231,6 +272,14 @@ export function onMessageSearchInChange(value) {
 
 export function onMessageModelFilterChange(value) {
   historyStore.set({ messageModelFilter: value || "" });
+  if (isMessagesHistoryMode()) loadMessageList();
+}
+
+/** Muestra u oculta en el listado los mensajes de conversaciones en la papelera. */
+export function onMessageShowDeletedToggle(value) {
+  const next = !!value;
+  persistMessageShowDeleted(next);
+  historyStore.set({ messageShowDeleted: next });
   if (isMessagesHistoryMode()) loadMessageList();
 }
 

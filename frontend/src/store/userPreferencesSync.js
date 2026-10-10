@@ -17,16 +17,22 @@ import {
   persistMessageSort,
   persistMessageSortDirection,
   persistMessageSearchIn,
+  persistMessageShowDeleted,
   readStoredConversationSort,
   readStoredMessageSort,
   readStoredMessageSortDirection,
   readStoredMessageSearchIn,
+  readStoredMessageShowDeleted,
+  readStoredMessagePageSize,
+  persistMessagePageSize,
   LEFT_HISTORY_MODE_CONVERSATIONS,
   LEFT_HISTORY_MODE_KEY,
   LEFT_HISTORY_SORT_CONVERSATIONS_KEY,
   LEFT_HISTORY_SORT_MESSAGES_KEY,
   LEFT_HISTORY_SORT_DIRECTION_KEY,
   LEFT_HISTORY_SEARCH_IN_KEY,
+  LEFT_HISTORY_PAGE_SIZE_KEY,
+  LEFT_HISTORY_SHOW_DELETED_KEY,
 } from "./history.js";
 import { debugStore, getStoredDebugLogSize, setStoredDebugLogSize, DEBUG_LOG_SIZE_STORAGE_KEY } from "./debug.js";
 import {
@@ -73,6 +79,8 @@ const PREFERENCE_CACHE_KEYS = [
   LEFT_HISTORY_SORT_CONVERSATIONS_KEY,
   LEFT_HISTORY_SORT_MESSAGES_KEY,
   LEFT_HISTORY_SORT_DIRECTION_KEY,
+  LEFT_HISTORY_PAGE_SIZE_KEY,
+  LEFT_HISTORY_SHOW_DELETED_KEY,
   DEBUG_LOG_SIZE_STORAGE_KEY,
   LAST_CONVERSATION_STORAGE_KEY,
 ];
@@ -154,6 +162,8 @@ export function collectPreferencesSnapshot() {
       messageSort: historyStore.get().messageSort,
       messageSortDirection: historyStore.get().messageSortDirection,
       messageSearchIn: historyStore.get().messageSearchIn,
+      messageShowDeleted: !!historyStore.get().messageShowDeleted,
+      messagePageSize: readStoredMessagePageSize(),
     },
     debugLogSize: getStoredDebugLogSize(),
     lastConversationId: readLastConversationId() || null,
@@ -217,6 +227,14 @@ export function applyPreferencesSnapshot(raw) {
       if (raw.history.messageSearchIn != null) {
         persistMessageSearchIn(raw.history.messageSearchIn);
         histPatch.messageSearchIn = readStoredMessageSearchIn();
+      }
+      if (raw.history.messageShowDeleted != null) {
+        persistMessageShowDeleted(!!raw.history.messageShowDeleted);
+        histPatch.messageShowDeleted = readStoredMessageShowDeleted();
+      }
+      if (raw.history.messagePageSize != null) {
+        persistMessagePageSize(raw.history.messagePageSize);
+        histPatch.messagePageSize = readStoredMessagePageSize();
       }
       if (Object.keys(histPatch).length) historyStore.set(histPatch);
     }

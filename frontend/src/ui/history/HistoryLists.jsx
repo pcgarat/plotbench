@@ -7,6 +7,8 @@ import {
   MESSAGE_SORT_OPTIONS,
   MESSAGE_SORT_DIRECTION_ASC,
   defaultMessageSortDirection,
+  MESSAGE_PAGE_SIZE_OPTIONS,
+  MESSAGE_MODEL_NONE,
   LEFT_HISTORY_MODE_MESSAGES,
   LEFT_HISTORY_MODE_CONVERSATIONS,
 } from "../../store/history.js";
@@ -16,7 +18,12 @@ import { getConversationGroup } from "../../lib/forest.js";
 import { formatDateTime } from "../../lib/dates.js";
 import { groupRootsByConversation, visibleHistoryNodeIds } from "../../lib/historyVisibleNodes.js";
 import {
-  loadMessageList,
+  MESSAGE_DEFAULT_PAGE_SIZE,
+  clampPage,
+  pageRange,
+  totalPages,
+} from "../../lib/messagePagination.js";
+import {
   loadMessageTreeRoots,
   toggleMessageTreeNode,
   restoreConversationFromTrash,
@@ -27,10 +34,17 @@ import {
   onMessageHistorySearchInput,
   onMessageSearchInChange,
   onMessageModelFilterChange,
+  onMessageShowDeletedToggle,
   setLeftHistoryMode,
   applyHistoryNodeClick,
   applyHistoryNodeContextMenu,
   deleteSelectedHistoryNodes,
+  goToMessagePage,
+  goToFirstMessagePage,
+  goToPrevMessagePage,
+  goToNextMessagePage,
+  goToLastMessagePage,
+  setMessagePageSize,
 } from "../../app/historyActions.js";
 import {
   newConversation,
@@ -87,6 +101,8 @@ export function MessageListControls() {
   const query = useStore(historyStore, (s) => s.messageListQuery);
   const modelFilter = useStore(historyStore, (s) => s.messageModelFilter);
   const models = useStore(historyStore, (s) => s.messageModels);
+  const hasMissingModels = useStore(historyStore, (s) => s.hasMissingModels);
+  const showDeleted = useStore(historyStore, (s) => s.messageShowDeleted);
   const ascending = direction === MESSAGE_SORT_DIRECTION_ASC;
   return (
     <div className="message-list-controls" id="message-list-controls">
@@ -149,12 +165,22 @@ export function MessageListControls() {
         onChange={(e) => onMessageModelFilterChange(e.target.value)}
       >
         <option value="">Todos los modelos</option>
+        {hasMissingModels ? <option value={MESSAGE_MODEL_NONE}>Sin modelo</option> : null}
         {models.map((m) => (
           <option key={`${m.provider}:${m.model_id}`} value={m.model_id}>
             {m.model_id} · {m.count}
           </option>
         ))}
       </select>
+      <label className="message-show-deleted" htmlFor="message-include-deleted">
+        <input
+          type="checkbox"
+          id="message-include-deleted"
+          checked={!!showDeleted}
+          onChange={(e) => onMessageShowDeletedToggle(e.target.checked)}
+        />
+        <span>Mensajes eliminados</span>
+      </label>
     </div>
   );
 }
@@ -163,38 +189,71 @@ function MessageListRow({ item, active }) {
   const when = formatDateTime(item.created_at);
   const photos = item.photo_count || 0;
   const meta = `${item.title || "(sin título)"} · ${when}`;
+  const canOpen = !!item.conversation_id;
   return (
     <div
-      className={`conversation-item message-list-item${active ? " active" : ""}`}
+      className={`conversation-item message-list-item${active ? " active" : ""}${
+        item.deleted ? " is-deleted" : ""
+      }${item.orphan || !canOpen ? " is-orphan" : ""}`}
       data-id={item.id}
-      data-conversation-id={item.conversation_id}
+      data-conversation-id={item.conversation_id || ""}
       title={meta}
-      onClick={() => openIsolatedMessage(item.conversation_id, item.id)}
+      onClick={canOpen ? () => openIsolatedMessage(item.conversation_id, item.id) : undefined}
     >
       <div className="conv-row">
         <span className="conv-title">{item.title || "(sin título)"}</span>
       </div>
       <div className="message-list-meta">
+        {item.deleted ? (
+          <span className="message-deleted-badge" title="Conversación en la papelera">
+            eliminado
+          </span>
+        ) : null}
+        {item.orphan || !canOpen ? (
+          <span className="message-orphan-badge" title="Su conversación ya no existe">
+            origen desconocido
+          </span>
+        ) : null}
         <time className="message-history-created" dateTime={item.created_at || ""}>
           {when}
         </time>
         <span className="message-list-stats">
           {item.length} car. · {photos} foto{photos === 1 ? "" : "s"}
-          {item.model_id ? ` · ${item.model_id}` : ""}
+          {item.model_id ? ` · ${item.model_id}` : " · Sin modelo"}
         </span>
       </div>
     </div>
   );
 }
 
-/** Listado de mensajes (respuestas del agente) con paginación incremental. */
+/** Listado de mensajes (respuestas del agente) con paginación completa. */
 export function MessagesList() {
   const items = useStore(historyStore, (s) => s.messageListItems);
   const total = useStore(historyStore, (s) => s.messageListTotal);
+  const page = useStore(historyStore, (s) => s.messagePage || 1);
+  const pageSize = useStore(historyStore, (s) => s.messagePageSize || MESSAGE_DEFAULT_PAGE_SIZE);
   const isEmptyQuery = useStore(historyStore, (s) => !!String(s.messageListQuery || "").trim());
   const viewOnlyId = useStore(sessionStore, (s) => s.messageViewOnlyMessageId);
   const focusId = useStore(sessionStore, (s) => s.focusMessageId || s.consultaAssistantId);
   const activeId = viewOnlyId || focusId;
+  const pages = totalPages(total, pageSize);
+  const current = clampPage(page, pages);
+  const range = pageRange(current, pageSize, total);
+  const [pageInput, setPageInput] = useState(String(current));
+
+  useEffect(() => {
+    setPageInput(String(current));
+  }, [current]);
+
+  function submitPageInput(e) {
+    e.preventDefault();
+    const wanted = parseInt(pageInput, 10);
+    if (Number.isNaN(wanted)) {
+      setPageInput(String(current));
+      return;
+    }
+    goToMessagePage(clampPage(wanted, pages));
+  }
 
   return (
     <>
@@ -206,20 +265,86 @@ export function MessagesList() {
           <MessageListRow key={m.id} item={m} active={m.id === activeId} />
         ))}
       </div>
-      {items.length < total ? (
-        <div className="message-history-pager" id="message-list-pager">
-          <span className="message-history-page-meta">
-            {items.length} / {total}
+      <div className="message-history-pager" id="message-list-pager" hidden={total === 0}>
+        <div className="message-history-page-row">
+          <select
+            id="message-page-size"
+            className="left-history-sort-select message-page-size-select"
+            aria-label="Elementos por página"
+            value={pageSize}
+            onChange={(e) => setMessagePageSize(Number(e.target.value))}
+          >
+            {MESSAGE_PAGE_SIZE_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n} / pág.
+              </option>
+            ))}
+          </select>
+          <span className="message-history-page-meta" id="message-page-meta">
+            {range.from}–{range.to} de {total}
           </span>
+        </div>
+        <div className="message-history-page-nav">
           <button
             type="button"
-            className="btn btn-secondary btn-small message-history-load-more"
-            onClick={() => loadMessageList({ append: true })}
+            id="message-page-first"
+            className="btn btn-secondary btn-small message-page-btn"
+            title="Primera página"
+            aria-label="Primera página"
+            disabled={current <= 1}
+            onClick={() => goToFirstMessagePage()}
           >
-            Cargar más
+            «
+          </button>
+          <button
+            type="button"
+            id="message-page-prev"
+            className="btn btn-secondary btn-small message-page-btn"
+            title="Página anterior"
+            aria-label="Página anterior"
+            disabled={current <= 1}
+            onClick={() => goToPrevMessagePage()}
+          >
+            ‹
+          </button>
+          <form className="message-page-jump" onSubmit={submitPageInput}>
+            <input
+              type="number"
+              id="message-page-input"
+              className="message-page-input"
+              min="1"
+              max={pages}
+              aria-label="Ir a la página"
+              value={pageInput}
+              onChange={(e) => setPageInput(e.target.value)}
+              onBlur={submitPageInput}
+            />
+            <span className="message-page-total">/ {pages}</span>
+          </form>
+          <button
+            type="button"
+            id="message-page-next"
+            className="btn btn-secondary btn-small message-page-btn"
+            title="Página siguiente"
+            aria-label="Página siguiente"
+            disabled={current >= pages}
+            onClick={() => goToNextMessagePage()}
+          >
+            ›
+          </button>
+          <button
+            type="button"
+            id="message-page-last"
+            className="btn btn-secondary btn-small message-page-btn"
+            title="Última página"
+            aria-label="Última página"
+            disabled={current >= pages}
+            onClick={() => goToLastMessagePage()}
+          >
+            »
           </button>
         </div>
-      ) : null}
+      </div>
     </>
   );
 }

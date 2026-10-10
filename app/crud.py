@@ -187,6 +187,9 @@ MESSAGE_SORT_VALUES = (
 )
 MESSAGE_SEARCH_IN_VALUES = ("title", "both")
 
+# Valor del filtro por modelo para los mensajes cuya conversación no tiene modelo.
+MESSAGE_MODEL_NONE_FILTER = "__none__"
+
 # Dirección del orden del listado de mensajes.
 MESSAGE_SORT_DIRECTION_ASC = "asc"
 MESSAGE_SORT_DIRECTION_DESC = "desc"
@@ -284,12 +287,20 @@ def list_deleted_conversations(
 MESSAGE_HISTORY_PREVIEW_LEN = 80
 MESSAGE_HISTORY_LIMIT_DEFAULT = 50
 MESSAGE_HISTORY_LIMIT_MAX = 100
+# El listado de mensajes del panel izquierdo pagina de verdad: admite hasta 200 por página.
+MESSAGE_LIST_LIMIT_MAX = 200
 
 
 def clamp_message_history_limit(limit: int | None) -> int:
     if limit is None or limit < 1:
         return MESSAGE_HISTORY_LIMIT_DEFAULT
     return min(int(limit), MESSAGE_HISTORY_LIMIT_MAX)
+
+
+def clamp_message_list_limit(limit: int | None) -> int:
+    if limit is None or limit < 1:
+        return MESSAGE_HISTORY_LIMIT_DEFAULT
+    return min(int(limit), MESSAGE_LIST_LIMIT_MAX)
 
 
 def clamp_message_history_offset(offset: int | None) -> int:
@@ -458,11 +469,14 @@ def list_assistant_messages(
 @dataclass(frozen=True)
 class MessageListRow:
     message: Message
-    conversation: Conversation
+    conversation: Conversation | None
     title: str
     length: int
     photo_count: int
     latest_photo_at: datetime | None
+    deleted: bool = False
+    # Mensaje cuya conversación ya no existe (origen desconocido).
+    orphan: bool = False
 
 
 @dataclass(frozen=True)
@@ -473,20 +487,7 @@ class MessageListPage:
     offset: int
     search_in: str | None
     models: list[dict]
-
-
-def _message_owner_filters(*, user_id: str | None = None, include_unowned: bool = False) -> list:
-    filters = [
-        Message.role == "assistant",
-        Conversation.deleted_at.is_(None),
-        Conversation.kind != Conversation.KIND_PROMPT_GENERATOR,
-    ]
-    if user_id is not None:
-        if include_unowned:
-            filters.append(or_(Conversation.user_id == user_id, Conversation.user_id.is_(None)))
-        else:
-            filters.append(Conversation.user_id == user_id)
-    return filters
+    has_missing_model: bool = False
 
 
 def _message_row_from(db_row) -> MessageListRow:
@@ -503,6 +504,8 @@ def _message_row_from(db_row) -> MessageListRow:
         length=len(content),
         photo_count=int(photo_count or 0),
         latest_photo_at=latest_photo_at,
+        deleted=conv is not None and conv.deleted_at is not None,
+        orphan=conv is None,
     )
 
 
@@ -511,6 +514,7 @@ def _query_message_rows(
     *,
     user_id: str | None = None,
     include_unowned: bool = False,
+    include_deleted: bool = False,
 ) -> list[MessageListRow]:
     photo_stats = (
         db.query(
@@ -521,7 +525,22 @@ def _query_message_rows(
         .group_by(IllustratedImage.message_id)
         .subquery()
     )
-    filters = _message_owner_filters(user_id=user_id, include_unowned=include_unowned)
+    # Outerjoin: los mensajes cuya conversación ya no existe (origen desconocido) no se ocultan.
+    # Su control de acceso es el de los datos sin dueño: solo el admin los ve (include_unowned).
+    filters = [
+        Message.role == "assistant",
+        or_(
+            Conversation.id.is_(None),
+            Conversation.kind != Conversation.KIND_PROMPT_GENERATOR,
+        ),
+    ]
+    if not include_deleted:
+        filters.append(
+            or_(Conversation.id.is_(None), Conversation.deleted_at.is_(None))
+        )
+    if user_id is not None and not include_unowned:
+        # Conversación sin dueño (o inexistente para los huérfanos): solo para el admin.
+        filters.append(Conversation.user_id == user_id)
     rows = (
         db.query(
             Message,
@@ -529,7 +548,7 @@ def _query_message_rows(
             photo_stats.c.photo_count,
             photo_stats.c.latest_photo_at,
         )
-        .join(Conversation, Conversation.id == Message.conversation_id)
+        .outerjoin(Conversation, Conversation.id == Message.conversation_id)
         .outerjoin(photo_stats, photo_stats.c.message_id == Message.id)
         .filter(*filters)
         .order_by(Message.created_at.desc())
@@ -597,13 +616,17 @@ def _filter_message_rows(
 
 
 def generating_models_from_rows(rows: list[MessageListRow]) -> list[dict]:
-    """Modelos (provider:model_id) que han generado al menos un mensaje, con su recuento."""
+    """Modelos (provider:model_id) que han generado al menos un mensaje, con su recuento.
+
+    Las filas sin modelo (conversación sin ``model_id``) no se listan aquí; se exponen
+    aparte con ``has_missing_model`` y el filtro ``MESSAGE_MODEL_NONE_FILTER``.
+    """
     counts: dict[tuple[str, str], int] = {}
     for row in rows:
-        model_id = (row.conversation.model_id or "").strip()
+        model_id = (row.conversation.model_id or "").strip() if row.conversation else ""
         if not model_id:
             continue
-        provider = (row.conversation.provider or "ollama").strip() or "ollama"
+        provider = ((row.conversation.provider or "ollama").strip() or "ollama")
         counts[(provider, model_id)] = counts.get((provider, model_id), 0) + 1
     return [
         {"provider": provider, "model_id": model_id, "count": count}
@@ -611,6 +634,23 @@ def generating_models_from_rows(rows: list[MessageListRow]) -> list[dict]:
             counts.items(), key=lambda kv: (kv[0][1].casefold(), kv[0][0])
         )
     ]
+
+
+def has_missing_model_rows(rows: list[MessageListRow]) -> bool:
+    """¿Hay alguna fila cuya conversación no tenga modelo (para ofrecer «Sin modelo»).
+
+    Incluye los huérfanos (conversación inexistente): su origen es, si cabe, más desconocido.
+    """
+    return any(not ((row.conversation.model_id or "").strip() if row.conversation else "") for row in rows)
+
+
+def _filter_rows_by_model(rows: list[MessageListRow], model_id: str) -> list[MessageListRow]:
+    """Filtra por modelo; ``MESSAGE_MODEL_NONE_FILTER`` selecciona los que no tienen modelo."""
+    if model_id == MESSAGE_MODEL_NONE_FILTER:
+        return [
+            r for r in rows if not ((r.conversation.model_id or "").strip() if r.conversation else "")
+        ]
+    return [r for r in rows if ((r.conversation.model_id or "") if r.conversation else "") == model_id]
 
 
 def list_messages(
@@ -625,15 +665,22 @@ def list_messages(
     *,
     user_id: str | None = None,
     include_unowned: bool = False,
+    include_deleted: bool = False,
 ) -> MessageListPage:
-    """Respuestas assistant paginadas con título, orden y filtros del panel izquierdo."""
-    capped = clamp_message_history_limit(limit)
+    """Respuestas assistant paginadas con título, orden y filtros del panel izquierdo.
+
+    ``include_deleted`` incluye los mensajes de conversaciones en la papelera (soft-delete).
+    """
+    capped = clamp_message_list_limit(limit)
     off = clamp_message_history_offset(offset)
-    rows = _query_message_rows(db, user_id=user_id, include_unowned=include_unowned)
+    rows = _query_message_rows(
+        db, user_id=user_id, include_unowned=include_unowned, include_deleted=include_deleted
+    )
     # El selector de modelos ofrece siempre todos los generadores, no solo los de la página filtrada.
     models = generating_models_from_rows(rows)
+    has_missing_model = has_missing_model_rows(rows)
     if model_id:
-        rows = [r for r in rows if (r.conversation.model_id or "") == model_id]
+        rows = _filter_rows_by_model(rows, model_id)
     needle = _normalize_message_history_query(q)
     filtered, effective_scope = _filter_message_rows(
         rows, needle, normalize_message_search_in(search_in)
@@ -647,6 +694,7 @@ def list_messages(
         offset=off,
         search_in=effective_scope,
         models=models,
+        has_missing_model=has_missing_model,
     )
 
 

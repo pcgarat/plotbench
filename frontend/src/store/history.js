@@ -1,10 +1,13 @@
 import { createStore } from "./createStore.js";
+import { MESSAGE_PAGE_SIZE_OPTIONS, normalizePageSize } from "../lib/messagePagination.js";
 
 export const LEFT_HISTORY_MODE_KEY = "leftHistoryMode";
 export const LEFT_HISTORY_SORT_CONVERSATIONS_KEY = "leftHistorySortConversations";
 export const LEFT_HISTORY_SORT_MESSAGES_KEY = "leftHistorySortMessages";
 export const LEFT_HISTORY_SORT_DIRECTION_KEY = "leftHistorySortDirection";
 export const LEFT_HISTORY_SEARCH_IN_KEY = "leftHistorySearchIn";
+export const LEFT_HISTORY_PAGE_SIZE_KEY = "leftHistoryPageSize";
+export const LEFT_HISTORY_SHOW_DELETED_KEY = "leftHistoryShowDeleted";
 
 /** Vistas del panel izquierdo: listado de mensajes (por defecto) o de conversaciones. */
 export const LEFT_HISTORY_MODE_MESSAGES = "messages";
@@ -47,9 +50,13 @@ export const MESSAGE_SORT_DEFAULT_DIRECTION = {
 
 export const CONV_GROUP_LABELS = { hoy: "Hoy", ayer: "Ayer", semana: "Semana", anteriores: "Antes" };
 
-export const MESSAGE_HISTORY_PAGE_SIZE = 50;
+// Valor del filtro por modelo para los mensajes sin modelo conocido (conversación sin model_id).
+export const MESSAGE_MODEL_NONE = "__none__";
+
 export const MESSAGE_TREE_ROOT_PAGE_SIZE = 50;
 export const MESSAGE_HISTORY_SEARCH_DEBOUNCE_MS = 280;
+
+export { MESSAGE_PAGE_SIZE_OPTIONS };
 
 const MESSAGE_SORT_VALUES = MESSAGE_SORT_OPTIONS.map((o) => o.value);
 const MESSAGE_SEARCH_IN_VALUES = MESSAGE_SEARCH_IN_OPTIONS.map((o) => o.value);
@@ -164,6 +171,42 @@ export function persistMessageSearchIn(scope) {
   } catch (_) {}
 }
 
+function readMessagePageSize() {
+  try {
+    return normalizePageSize(localStorage.getItem(LEFT_HISTORY_PAGE_SIZE_KEY));
+  } catch (_) {
+    return normalizePageSize(null);
+  }
+}
+
+function readMessageShowDeleted() {
+  try {
+    return localStorage.getItem(LEFT_HISTORY_SHOW_DELETED_KEY) === "true";
+  } catch (_) {
+    return false;
+  }
+}
+
+export function readStoredMessageShowDeleted() {
+  return readMessageShowDeleted();
+}
+
+export function persistMessageShowDeleted(value) {
+  try {
+    localStorage.setItem(LEFT_HISTORY_SHOW_DELETED_KEY, value ? "true" : "false");
+  } catch (_) {}
+}
+
+export function readStoredMessagePageSize() {
+  return readMessagePageSize();
+}
+
+export function persistMessagePageSize(size) {
+  try {
+    localStorage.setItem(LEFT_HISTORY_PAGE_SIZE_KEY, String(normalizePageSize(size)));
+  } catch (_) {}
+}
+
 export function persistLeftHistoryMode(mode) {
   try {
     localStorage.setItem(LEFT_HISTORY_MODE_KEY, normalizeMode(mode));
@@ -177,11 +220,17 @@ export const historyStore = createStore({
   messageSort: readMessageSort(),
   messageSortDirection: readStoredMessageSortDirectionRaw(),
   messageSearchIn: readMessageSearchIn(),
+  messageShowDeleted: readMessageShowDeleted(),
   messageListItems: [],
   messageListTotal: 0,
   messageListQuery: "",
   messageModelFilter: "",
   messageModels: [],
+  /** Hay mensajes sin modelo conocido: se ofrece la opción «Sin modelo» en el filtro. */
+  hasMissingModels: false,
+  // Paginación del listado de mensajes (página actual + tamaño por página).
+  messagePage: 1,
+  messagePageSize: readMessagePageSize(),
   // Conversaciones (árbol de respuestas).
   conversations: [],
   deletedConversations: [],
