@@ -344,7 +344,7 @@ def list_message_list(
     limit: int = Query(
         default=crud.MESSAGE_HISTORY_LIMIT_DEFAULT,
         ge=1,
-        le=crud.MESSAGE_HISTORY_LIMIT_MAX,
+        le=crud.MESSAGE_LIST_LIMIT_MAX,
     ),
     offset: int = Query(default=0, ge=0),
     sort: Literal["date", "title", "length", "photos"] = Query(default="date"),
@@ -352,9 +352,13 @@ def list_message_list(
     q: str | None = Query(default=None),
     search_in: Literal["title", "both"] | None = Query(default=None),
     model_id: str | None = Query(default=None),
+    include_deleted: bool = Query(default=False),
     db: Session = Depends(get_db),
 ):
-    """Mensajes (respuestas assistant) con título, fecha, filtros y orden del panel izquierdo."""
+    """Mensajes (respuestas assistant) con título, fecha, filtros y orden del panel izquierdo.
+
+    ``include_deleted`` añade los mensajes de conversaciones en la papelera.
+    """
     page = crud.list_messages(
         db,
         limit=limit,
@@ -366,30 +370,35 @@ def list_message_list(
         model_id=model_id,
         user_id=user.id,
         include_unowned=bool(user.is_admin),
+        include_deleted=include_deleted,
     )
+    def _item(row) -> MessageListItem:
+        conv = row.conversation
+        return MessageListItem(
+            id=row.message.id,
+            conversation_id=conv.id if conv else None,
+            conversation_title=(conv.title or "") if conv else "",
+            parent_id=row.message.parent_id,
+            content=row.message.content,
+            title=row.title,
+            length=row.length,
+            photo_count=row.photo_count,
+            created_at=row.message.created_at,
+            latest_image_at=row.latest_photo_at,
+            model_id=(conv.model_id or "") if conv else "",
+            provider=((conv.provider or "ollama") if conv else ""),
+            deleted=row.deleted,
+            orphan=row.orphan,
+        )
+
     return MessageListResponse(
-        items=[
-            MessageListItem(
-                id=row.message.id,
-                conversation_id=row.conversation.id,
-                conversation_title=row.conversation.title or "",
-                parent_id=row.message.parent_id,
-                content=row.message.content,
-                title=row.title,
-                length=row.length,
-                photo_count=row.photo_count,
-                created_at=row.message.created_at,
-                latest_image_at=row.latest_photo_at,
-                model_id=row.conversation.model_id or "",
-                provider=row.conversation.provider or "ollama",
-            )
-            for row in page.rows
-        ],
+        items=[_item(row) for row in page.rows],
         total=page.total,
         limit=page.limit,
         offset=page.offset,
         search_in=page.search_in,
         models=[MessageModelOption(**m) for m in page.models],
+        has_missing_model=page.has_missing_model,
     )
 
 

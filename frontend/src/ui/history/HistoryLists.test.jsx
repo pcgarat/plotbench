@@ -74,6 +74,7 @@ function seedMessages() {
         created_at: now,
         model_id: "llama3.2",
         provider: "ollama",
+        deleted: false,
       },
     ],
     messageListTotal: 1,
@@ -83,6 +84,9 @@ function seedMessages() {
     messageSortDirection: "desc",
     messageModelFilter: "",
     messageModels: [{ provider: "ollama", model_id: "llama3.2", count: 1 }],
+    messageShowDeleted: false,
+    messagePage: 1,
+    messagePageSize: 50,
   });
 }
 
@@ -169,6 +173,95 @@ describe("ConversationsList vista de mensajes", () => {
     expect(options).toEqual(["", "llama3.2"]);
   });
 
+  it("ofrece «Sin modelo» cuando hay mensajes sin modelo y los filtra", () => {
+    historyStore.set({ hasMissingModels: true });
+    render(<ConversationsList />);
+    const select = document.getElementById("message-model-filter");
+    const options = Array.from(select.querySelectorAll("option")).map((o) => o.value);
+    expect(options).toContain("__none__");
+    expect(Array.from(select.querySelectorAll("option")).map((o) => o.textContent)).toContain(
+      "Sin modelo"
+    );
+    fireEvent.change(select, { target: { value: "__none__" } });
+    expect(historyStore.get().messageModelFilter).toBe("__none__");
+  });
+
+  it("sin mensajes sin modelo no muestra la opción «Sin modelo»", () => {
+    historyStore.set({ hasMissingModels: false });
+    render(<ConversationsList />);
+    const select = document.getElementById("message-model-filter");
+    const options = Array.from(select.querySelectorAll("option")).map((o) => o.value);
+    expect(options).not.toContain("__none__");
+  });
+
+  it("un mensaje sin modelo se marca como «Sin modelo»", () => {
+    historyStore.set({
+      messageListItems: [
+        {
+          id: "a2",
+          conversation_id: "c2",
+          conversation_title: "Sin modelo",
+          title: "Mensaje huérfano",
+          length: 10,
+          photo_count: 0,
+          created_at: now,
+          model_id: "",
+          provider: "ollama",
+          deleted: false,
+        },
+      ],
+    });
+    render(<ConversationsList />);
+    const row = document.querySelector('[data-id="a2"]');
+    expect(row.querySelector(".message-list-stats").textContent).toContain("Sin modelo");
+  });
+
+  it("un mensaje sin conversación se marca como origen desconocido y no abre nada", () => {
+    historyStore.set({
+      messageListItems: [
+        {
+          id: "a3",
+          conversation_id: null,
+          conversation_title: "",
+          title: "Mensaje sin conversación",
+          length: 10,
+          photo_count: 0,
+          created_at: now,
+          model_id: "",
+          provider: "",
+          deleted: false,
+          orphan: true,
+        },
+      ],
+    });
+    render(<ConversationsList />);
+    const row = document.querySelector('[data-id="a3"]');
+    expect(row.querySelector(".message-orphan-badge")).toBeTruthy();
+    fireEvent.click(row);
+    expect(openIsolatedMessage).not.toHaveBeenCalled();
+  });
+
+  it("muestra el error de carga en lugar del estado vacío", () => {
+    historyStore.set({
+      messageListItems: [],
+      messageListTotal: 0,
+      messageListError: "Error al cargar mensajes: 422 limit <= 100",
+    });
+    render(<ConversationsList />);
+    const err = document.querySelector("#messages-list .message-list-error");
+    expect(err).toBeTruthy();
+    expect(err.textContent).toContain("Error al cargar mensajes");
+    expect(document.querySelector("#messages-list").textContent).not.toContain("No hay mensajes todavía.");
+  });
+
+  it("sin error muestra el estado vacío habitual", () => {
+    historyStore.set({ messageListItems: [], messageListTotal: 0, messageListError: null });
+    render(<ConversationsList />);
+    const list = document.querySelector("#messages-list");
+    expect(list.querySelector(".message-list-error")).toBeNull();
+    expect(list.textContent).toContain("No hay mensajes todavía.");
+  });
+
   it("cambiar el orden de mensajes llama a onLeftHistorySortChange", () => {
     render(<ConversationsList />);
     fireEvent.change(document.getElementById("left-history-sort-select"), { target: { value: "photos" } });
@@ -185,5 +278,59 @@ describe("ConversationsList vista de mensajes", () => {
     expect(document.getElementById("message-sort-direction").textContent).toBe("↑");
     fireEvent.click(document.getElementById("message-sort-direction"));
     expect(historyStore.get().messageSortDirection).toBe("desc");
+  });
+
+  it("la paginación muestra el rango, el tamaño y permite saltar de página", () => {
+    historyStore.set({ messageListTotal: 120, messagePage: 2, messagePageSize: 50 });
+    render(<ConversationsList />);
+    expect(document.getElementById("message-page-meta").textContent).toBe("51–100 de 120");
+    expect(document.getElementById("message-page-size").value).toBe("50");
+
+    const input = document.getElementById("message-page-input");
+    fireEvent.change(input, { target: { value: "3" } });
+    fireEvent.submit(input.closest("form"));
+    expect(historyStore.get().messagePage).toBe(3);
+  });
+
+  it("el check de mensajes eliminados refleja el store y lo actualiza", () => {
+    render(<ConversationsList />);
+    const check = document.getElementById("message-include-deleted");
+    expect(check).toBeTruthy();
+    expect(check.checked).toBe(false);
+    fireEvent.click(check);
+    expect(historyStore.get().messageShowDeleted).toBe(true);
+    expect(document.getElementById("message-include-deleted").checked).toBe(true);
+  });
+
+  it("los mensajes de conversaciones en papelera se marcan como eliminados", () => {
+    historyStore.set({
+      messageListItems: [
+        {
+          id: "a1",
+          conversation_id: "c1",
+          conversation_title: "Chat",
+          title: "El faro azul",
+          length: 42,
+          photo_count: 0,
+          created_at: now,
+          model_id: "llama3.2",
+          provider: "ollama",
+          deleted: true,
+        },
+      ],
+    });
+    render(<ConversationsList />);
+    const row = document.querySelector('[data-id="a1"]');
+    expect(row.classList.contains("is-deleted")).toBe(true);
+    expect(row.querySelector(".message-deleted-badge")).toBeTruthy();
+  });
+
+  it("los botones primera/última llevan a los extremos", () => {
+    historyStore.set({ messageListTotal: 120, messagePage: 2, messagePageSize: 50 });
+    render(<ConversationsList />);
+    fireEvent.click(document.getElementById("message-page-last"));
+    expect(historyStore.get().messagePage).toBe(3);
+    fireEvent.click(document.getElementById("message-page-first"));
+    expect(historyStore.get().messagePage).toBe(1);
   });
 });

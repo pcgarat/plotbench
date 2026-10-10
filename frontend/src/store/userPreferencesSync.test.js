@@ -15,6 +15,8 @@ import {
   persistMessageSort,
   persistMessageSortDirection,
   persistMessageSearchIn,
+  persistMessagePageSize,
+  persistMessageShowDeleted,
   persistLeftHistoryMode,
   LEFT_HISTORY_MODE_CONVERSATIONS,
   LEFT_HISTORY_MODE_KEY,
@@ -22,6 +24,8 @@ import {
   LEFT_HISTORY_SORT_MESSAGES_KEY,
   LEFT_HISTORY_SORT_DIRECTION_KEY,
   LEFT_HISTORY_SEARCH_IN_KEY,
+  LEFT_HISTORY_PAGE_SIZE_KEY,
+  LEFT_HISTORY_SHOW_DELETED_KEY,
 } from "./history.js";
 import { saveLastConversationId, LAST_CONVERSATION_STORAGE_KEY } from "./session.js";
 import { settingsStore, persistSettingsPrefs } from "./settings.js";
@@ -99,12 +103,16 @@ describe("userPreferencesSync", () => {
     persistMessageSort("photos");
     persistMessageSortDirection("asc");
     persistMessageSearchIn("both");
+    persistMessagePageSize(100);
+    persistMessageShowDeleted(true);
     persistLeftHistoryMode(LEFT_HISTORY_MODE_CONVERSATIONS);
     historyStore.set({
       mode: LEFT_HISTORY_MODE_CONVERSATIONS,
       messageSort: "photos",
       messageSortDirection: "asc",
       messageSearchIn: "both",
+      messagePageSize: 100,
+      messageShowDeleted: true,
     });
 
     const snap = collectPreferencesSnapshot();
@@ -112,17 +120,23 @@ describe("userPreferencesSync", () => {
     expect(snap.history.messageSort).toBe("photos");
     expect(snap.history.messageSortDirection).toBe("asc");
     expect(snap.history.messageSearchIn).toBe("both");
+    expect(snap.history.messagePageSize).toBe(100);
+    expect(snap.history.messageShowDeleted).toBe(true);
 
     // Estado divergente antes de aplicar: el snapshot debe imponerse.
     persistMessageSort("date");
     persistMessageSortDirection("desc");
     persistMessageSearchIn("title");
+    persistMessagePageSize(25);
+    persistMessageShowDeleted(false);
     persistLeftHistoryMode("messages");
     historyStore.set({
       mode: "messages",
       messageSort: "date",
       messageSortDirection: "desc",
       messageSearchIn: "title",
+      messagePageSize: 25,
+      messageShowDeleted: false,
     });
 
     applyPreferencesSnapshot(snap);
@@ -130,10 +144,14 @@ describe("userPreferencesSync", () => {
     expect(historyStore.get().messageSort).toBe("photos");
     expect(historyStore.get().messageSortDirection).toBe("asc");
     expect(historyStore.get().messageSearchIn).toBe("both");
+    expect(historyStore.get().messagePageSize).toBe(100);
+    expect(historyStore.get().messageShowDeleted).toBe(true);
     expect(localStorage.getItem(LEFT_HISTORY_MODE_KEY)).toBe(LEFT_HISTORY_MODE_CONVERSATIONS);
     expect(localStorage.getItem(LEFT_HISTORY_SORT_MESSAGES_KEY)).toBe("photos");
     expect(localStorage.getItem(LEFT_HISTORY_SORT_DIRECTION_KEY)).toBe("asc");
     expect(localStorage.getItem(LEFT_HISTORY_SEARCH_IN_KEY)).toBe("both");
+    expect(localStorage.getItem(LEFT_HISTORY_PAGE_SIZE_KEY)).toBe("100");
+    expect(localStorage.getItem(LEFT_HISTORY_SHOW_DELETED_KEY)).toBe("true");
   });
 
   it("apply normaliza valores de historial desconocidos del servidor", () => {

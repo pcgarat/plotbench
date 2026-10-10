@@ -60,8 +60,15 @@ def test_messages_list_controls_and_pager():
     assert 'id="left-history-sort-select"' in lists
     assert 'id="message-sort-direction"' in lists
     assert 'id="message-model-filter"' in lists
-    assert "loadMessageList({ append: true })" in lists
-    assert "Cargar más" in lists
+    assert 'id="message-include-deleted"' in lists
+    assert "onMessageShowDeletedToggle" in lists
+    # Paginación completa: tamaño por página, salto directo, primera/última.
+    assert 'id="message-page-size"' in lists
+    assert 'id="message-page-input"' in lists
+    assert 'id="message-page-first"' in lists
+    assert 'id="message-page-last"' in lists
+    assert "goToMessagePage" in lists
+    assert "setMessagePageSize" in lists
 
 
 def test_opening_isolated_message_shows_only_that_message():
@@ -132,3 +139,22 @@ def test_refresh_left_history_respects_active_mode():
     assert "isMessagesHistoryMode" in refresh
     assert "loadMessageList" in refresh
     assert "refreshMessageTreePreservingExpansion" in refresh
+
+
+def test_message_list_surfaces_messages_without_model():
+    """El listado muestra (y permite filtrar) los mensajes sin modelo conocido."""
+    lists = frontend_file("ui/history/HistoryLists.jsx")
+    assert "hasMissingModels" in lists
+    assert "MESSAGE_MODEL_NONE" in lists
+    assert "Sin modelo" in lists
+    actions = frontend_file("app/historyActions.js")
+    assert "has_missing_model" in actions
+    store = frontend_file("store/history.js")
+    assert 'MESSAGE_MODEL_NONE = "__none__"' in store
+
+
+def test_message_list_surfaces_orphan_messages():
+    """Los mensajes sin conversación se listan como «origen desconocido» y no abren nada."""
+    lists = frontend_file("ui/history/HistoryLists.jsx")
+    assert "origen desconocido" in lists
+    assert "message-orphan-badge" in lists

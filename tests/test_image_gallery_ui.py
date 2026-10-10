@@ -226,12 +226,31 @@ def test_gallery_lightbox_navigates_across_pages():
     assert "loadGalleryPage" in js
     assert "silent: true" in js or "silent: true" in js.replace(" ", "")
     assert "Cargando…" in js
-    assert "galleryTotal > 1" in js
+    assert "total > 1" in js
     assert "prev.disabled" in js
     assert "next.disabled" in js
     assert "function galleryPageOffsetForAbsolute" in js
     assert "GALLERY_PAGE_SIZE" in js
     assert ".image-gallery-lightbox-nav:disabled" in css
+
+
+def test_chat_photo_opens_gallery_viewer():
+    """Pulsar una foto del chat abre el mismo visor de la galería, con sus datos."""
+    from tests.frontend_source import frontend_file
+
+    js = frontend_source()
+    gallery = frontend_file("app/galleryActions.js")
+    app = frontend_file("App.jsx")
+    assert "openChatImageViewer" in js
+    assert "bindChatIllustrationViewerOpen" in js
+    assert "collectChatIllustrationItems" in gallery
+    assert "chatViewerItems" in gallery
+    assert "imageViewerSource" in gallery
+    assert "getIllustratedMeta" in gallery
+    assert "renderIllustrationMetaBody" in gallery
+    # El visor vive en la raíz: la galería puede estar cerrada.
+    assert 'id="image-gallery-lightbox"' in app.replace("className=", "class=")
+    assert 'id="image-gallery-lightbox"' not in frontend_file("ui/gallery/GalleryPanelBody.jsx")
 
 
 def test_index_serves_gallery_button(client):

@@ -3,7 +3,7 @@ import { imagesStore } from "../store/images.js";
 import { sessionStore } from "../store/session.js";
 import { showError, showNotice } from "../store/ui.js";
 import { escapeHtml } from "../lib/html.js";
-import { findChatIllustration } from "../lib/illustrationLocate.js";
+import { findChatIllustration, resolvedSceneId } from "../lib/illustrationLocate.js";
 import {
   isGalleryPanelVisible,
   setGalleryPanelVisible,
@@ -30,6 +30,7 @@ let conversationFilterPending = false;
 let conversationFilterSeq = 0;
 let conversationFilterTimer = null;
 let galleryDidInit = false;
+let chatViewerOpenBound = false;
 
 function bindScrollReveal(el, scrollEl) {
   const node = scrollEl || el;
@@ -778,7 +779,7 @@ export async function loadGalleryPage(options = {}) {
 export function closeGalleryLightbox() {
   const modal = document.getElementById("image-gallery-lightbox");
   if (modal) modal.hidden = true;
-  imagesStore.set({ galleryLightboxIndex: -1 });
+  imagesStore.set({ galleryLightboxIndex: -1, imageViewerSource: null });
 }
 
 /** Cierra el visor si el clic es fuera del contenido (backdrop del overlay). */
@@ -789,30 +790,187 @@ export function handleGalleryLightboxOverlayClick(event) {
   closeGalleryLightbox();
 }
 
+/** Fotos ilustradas presentes ahora mismo en el chat, en orden de lectura. */
+export function collectChatIllustrationItems(root) {
+  const scope = root || document.getElementById("messages-container");
+  if (!scope) return [];
+  const conversationId = sessionStore.get().conversationId || "";
+  return Array.from(scope.querySelectorAll("img.chat-illustration"))
+    .map(function (img) {
+      const frame = img.closest(".chat-illustration-frame");
+      // Las fotos que la toolbar de galería oculta (o rotas) no participan en el recorrido.
+      if (
+        frame &&
+        (frame.classList.contains("is-gallery-filter-hidden") ||
+          frame.classList.contains("chat-illustration-missing"))
+      ) {
+        return null;
+      }
+      const filename =
+        img.getAttribute("data-filename") || filenameFromIllustratedSrc(img.getAttribute("src"));
+      if (!filename) return null;
+      const row = img.closest(".message-row");
+      return {
+        filename: filename,
+        url: img.getAttribute("src") || "",
+        scene_id: img.getAttribute("data-scene") || resolvedSceneId(filename, ""),
+        conversation_id: conversationId,
+        message_id: row ? row.getAttribute("data-msg-id") || null : null,
+      };
+    })
+    .filter(Boolean);
+}
+
+function chatViewerStartIndex(items, filename) {
+  const idx = items.findIndex(function (item) {
+    return item.filename === filename;
+  });
+  return idx >= 0 ? idx : 0;
+}
+
+/** Abre el visor de la galería sobre una foto concreta del panel conversación. */
+export function openChatImageViewer(filename, options = {}) {
+  if (!filename) return false;
+  const items = collectChatIllustrationItems(options.root);
+  if (!items.length) return false;
+  const index = chatViewerStartIndex(items, filename);
+  imagesStore.set({
+    imageViewerSource: "chat",
+    chatViewerItems: items,
+    chatViewerIndex: index,
+    galleryLightboxIndex: -1,
+  });
+  const modal = document.getElementById("image-gallery-lightbox");
+  if (modal) modal.hidden = false;
+  renderGalleryLightbox();
+  return true;
+}
+
+/**
+ * El visor de fotos del chat vive en el documento (como el propio overlay): pulsar
+ * cualquier `img.chat-illustration` —panel conversación o modo lectura— lo abre con
+ * sus parámetros. En captura, para que no dispare además el filtro de galería por fila;
+ * sin stopPropagation, el resto de handlers del clic siguen funcionando.
+ */
+export function bindChatIllustrationViewerOpen() {
+  if (chatViewerOpenBound) return;
+  chatViewerOpenBound = true;
+  document.addEventListener(
+    "click",
+    function (e) {
+      const img = e.target.closest && e.target.closest("img.chat-illustration");
+      if (!img) return;
+      e.preventDefault();
+      const filename =
+        img.getAttribute("data-filename") || filenameFromIllustratedSrc(img.getAttribute("src"));
+      const readingRoot = img.closest("#reading-mode-body");
+      openChatImageViewer(filename, readingRoot ? { root: readingRoot } : {});
+    },
+    true
+  );
+}
+
+function viewerActiveMeta() {
+  const state = imagesStore.get();
+  if (state.imageViewerSource === "chat") {
+    const item = state.chatViewerItems[state.chatViewerIndex];
+    return { item: item || null, total: state.chatViewerItems.length, abs: state.chatViewerIndex };
+  }
+  const item = state.galleryItems[state.galleryLightboxIndex];
+  return {
+    item: item || null,
+    total: state.galleryTotal,
+    abs: state.galleryOffset + state.galleryLightboxIndex,
+  };
+}
+
+function setViewerPosition(absIndex) {
+  const state = imagesStore.get();
+  if (state.imageViewerSource === "chat") {
+    imagesStore.set({ chatViewerIndex: absIndex });
+  } else {
+    imagesStore.set({ galleryLightboxIndex: absIndex - state.galleryOffset });
+  }
+}
+
+/** Params de generación completos: la BD es la fuente de verdad en ambas fuentes. */
+async function fetchViewerMeta(item) {
+  if (!item || !item.filename) return null;
+  const selected = item.filename;
+  try {
+    const data = await imagesApi.getIllustratedMeta(selected);
+    const state = imagesStore.get();
+    const source = state.imageViewerSource;
+    const stillOpen =
+      source === "chat"
+        ? (state.chatViewerItems[state.chatViewerIndex] || {}).filename === selected
+        : source === "gallery" &&
+          (state.galleryItems[state.galleryLightboxIndex] || {}).filename === selected;
+    if (!stillOpen || !data) return null;
+    return {
+      mode: data.mode || item.mode,
+      params: data.params || {},
+      scene_id: data.scene_id || item.scene_id,
+      filename: data.filename || selected,
+      prompt_model: data.prompt_model || item.prompt_model,
+      prompt_provider: data.prompt_provider || item.prompt_provider,
+    };
+  } catch (_) {
+    return {
+      mode: item.mode,
+      params: item.params || {},
+      scene_id: item.scene_id,
+      filename: selected,
+      prompt_model: item.prompt_model,
+      prompt_provider: item.prompt_provider,
+    };
+  }
+}
+
+function applyViewerMeta(meta) {
+  if (!meta) return;
+  const body = document.getElementById("image-gallery-lightbox-meta");
+  if (!body) return;
+  const patch = {
+    mode: meta.mode,
+    params: meta.params || {},
+    scene_id: meta.scene_id,
+    filename: meta.filename,
+    prompt_model: meta.prompt_model,
+    prompt_provider: meta.prompt_provider,
+  };
+  body.innerHTML =
+    (body.dataset.link || "") +
+    '<p class="image-gallery-card-meta" style="margin:0 0 8px">LLM del prompt: ' +
+    escapeHtml(galleryLlmLabel(patch)) +
+    "</p>" +
+    renderIllustrationMetaBody(patch);
+}
+
 export function renderGalleryLightbox() {
-  const { galleryItems, galleryTotal, galleryLightboxIndex, galleryOffset } = imagesStore.get();
-  const item = galleryItems[galleryLightboxIndex];
+  const { item, total, abs } = viewerActiveMeta();
   const img = document.getElementById("image-gallery-lightbox-img");
   const meta = document.getElementById("image-gallery-lightbox-meta");
   const prev = document.getElementById("image-gallery-lightbox-prev");
   const next = document.getElementById("image-gallery-lightbox-next");
   if (!item || !img || !meta) {
-    const disabled = galleryTotal <= 1;
+    const disabled = total <= 1;
     void prev;
     void next;
-    return galleryTotal > 1 ? { prev: { disabled }, next: { disabled } } : { prev: { disabled }, next: { disabled } };
+    return total > 1
+      ? { prev: { disabled }, next: { disabled } }
+      : { prev: { disabled }, next: { disabled } };
   }
   img.src = item.url || "";
   img.alt = (item.prompt || "").slice(0, 180);
-  const abs = galleryOffset + galleryLightboxIndex;
-  const showNav = galleryTotal > 1;
+  const showNav = total > 1;
   if (prev) {
     prev.hidden = !showNav;
     prev.disabled = abs <= 0;
   }
   if (next) {
     next.hidden = !showNav;
-    next.disabled = abs >= galleryTotal - 1;
+    next.disabled = abs >= total - 1;
   }
   const convLabel = item.conversation_title || "Conversación";
   const goBtn =
@@ -823,13 +981,12 @@ export function renderGalleryLightbox() {
     escapeHtml(convLabel) +
     (item.created_at ? " · " + escapeHtml(formatGalleryDate(item.created_at)) : "") +
     "</span></p>";
-  const llmBlock =
-    '<p class="image-gallery-card-meta" style="margin:0 0 8px">LLM del prompt: ' +
-    escapeHtml(galleryLlmLabel(item)) +
-    "</p>";
+  meta.dataset.link = goBtn;
   meta.innerHTML =
     goBtn +
-    llmBlock +
+    '<p class="image-gallery-card-meta" style="margin:0 0 8px">LLM del prompt: ' +
+    escapeHtml(galleryLlmLabel(item)) +
+    "</p>" +
     renderIllustrationMetaBody({
       mode: item.mode,
       params: item.params || {},
@@ -852,23 +1009,36 @@ export function renderGalleryLightbox() {
       });
     });
   }
+  fetchViewerMeta(item).then(applyViewerMeta);
   return { prev: { disabled: prev ? prev.disabled : true }, next: { disabled: next ? next.disabled : true } };
 }
 
 export function openGalleryLightbox(index) {
   const galleryItems = imagesStore.get().galleryItems;
   if (index < 0 || index >= galleryItems.length) return;
-  imagesStore.set({ galleryLightboxIndex: index });
+  imagesStore.set({
+    galleryLightboxIndex: index,
+    imageViewerSource: "gallery",
+    chatViewerItems: [],
+    chatViewerIndex: -1,
+  });
   const modal = document.getElementById("image-gallery-lightbox");
   if (modal) modal.hidden = false;
   renderGalleryLightbox();
 }
 
 export async function stepGalleryLightbox(delta) {
-  const { galleryItems, galleryLightboxIndex, galleryTotal, galleryOffset } = imagesStore.get();
-  if (galleryLightboxIndex < 0 || galleryTotal < 2 || galleryLightboxBusy) return;
-  const target = galleryOffset + galleryLightboxIndex + delta;
-  if (target < 0 || target >= galleryTotal) return;
+  const state = imagesStore.get();
+  const { item, total, abs } = viewerActiveMeta();
+  if (!item || total < 2 || galleryLightboxBusy) return;
+  const target = abs + delta;
+  if (target < 0 || target >= total) return;
+  if (state.imageViewerSource === "chat") {
+    setViewerPosition(target);
+    renderGalleryLightbox();
+    return;
+  }
+  const { galleryItems, galleryOffset } = state;
   const pageOffset = galleryPageOffsetForAbsolute(target);
   if (pageOffset === galleryOffset) {
     openGalleryLightbox(target - galleryOffset);
@@ -1023,6 +1193,8 @@ export function initImageGallery() {
   const messagesContainer = document.getElementById("messages-container");
   if (messagesContainer) {
     messagesContainer.addEventListener("click", function (e) {
+      const illustrationImg = e.target.closest("img.chat-illustration");
+      if (illustrationImg) return;
       if (!isGalleryPanelVisible()) return;
       if (e.target.closest("button, a, textarea, input, select")) return;
       const row = e.target.closest(".message-row");
@@ -1130,6 +1302,7 @@ export function initImageGallery() {
       stepGalleryLightbox(1);
     }
   });
+  bindChatIllustrationViewerOpen();
   const galleryPanel = document.getElementById("image-gallery-panel");
   const galleryGrid = document.getElementById("image-gallery-grid");
   bindScrollReveal(galleryPanel || galleryGrid, galleryGrid);

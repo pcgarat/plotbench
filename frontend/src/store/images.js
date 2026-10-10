@@ -45,6 +45,13 @@ export const imagesStore = createStore({
   galleryScopeAll: true,
   galleryUserChoseAll: false,
   galleryLightboxIndex: -1,
+  /**
+   * Fuente del visor compartido: "gallery" (colección filtrada) o "chat"
+   * (fotos de la conversación abierta). null = visor cerrado.
+   */
+  imageViewerSource: null,
+  chatViewerItems: [],
+  chatViewerIndex: -1,
   galleryMessageId: null,
   queueItems: [],
   queueFilterStatus: "",
